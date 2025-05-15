@@ -7,13 +7,13 @@ published: true
 password: hopeyouhadagreatlife
 ---
 
-A lot of things that I really wanted to talk about Christians but neither do I have the capacity nor the bravery. I came from a family with various beliefs: Islam, Christian, Liberal, and Indonesian Kejawen. Besides Muslims, Christian people always have enough respect my side especially after my Christian boss gave me more tolerance to practice Islam than my previous Muslim boss (⚠ this is not to be generalized, it will be another story itself).
+A lot of things that I really wanted to talk about Christians but neither do I have the capacity nor the bravery. I came from a family with various beliefs: Islam, Christian, Liberal, and Indonesian Kejawen. Besides Muslims, Christian people always have enough respect in my side especially after my Christian boss gave me more tolerance to practice Islam than my previous Muslim boss (⚠ this is not to be generalized, it will be another story itself).
 
 From that, I sometimes really want a goodness for the Christians. In some way it got me through some of these messages:
 
 # Christians (people) are supported in Muslim best reference.
 
-In Islam we only have 4 source to learn, sorted by the lowest rank: (1) Qiyaas: the analogical reasoning or deduction (2) Ijma: the concensus between the scholars (3) Hadith: The spoken, act, or approval from Prophet Muhammad ﷺ (4) Al-Quran: the holiest and the best reference for Muslims to learn about life. Starting from the best reference, other references are used to support each other to manage through modernization or edge cases, i.e: the obligation to Salah stated on Quran, but how to do it are from hadith.
+In Islam we only have 4 source to learn, sorted by the lowest rank: (1) Qiyaas: the analogical reasoning or deduction (2) Ijma: the concensus between the scholars (3) Sunnah: The spoken, act, or approval from Prophet Muhammad ﷺ (4) Al-Quran: the holiest and the best reference for Muslims to learn about life. Starting from the best reference, other references are used to support each other to manage through modernization or edge cases, i.e: the obligation to Salah stated on Quran, but how to do it are from hadith.
 
 Allah never revealed unimportant message, that's why so many big names never mentioned on the Quran neither it is a person, races, clans, or religions. Meanwhile, Christians and their history is not the case.
 
