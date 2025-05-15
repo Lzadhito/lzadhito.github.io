@@ -67,18 +67,28 @@ function onSubmit() {
     </template>
   </UModal>
 
-  <div v-if="isAuthenticated" class="prose container text-white">
-    <h1 class="text-white">
-      <UButton
-        icon="i-lucide-chevron-left"
-        size="xl"
-        variant="ghost"
-        class="text-white"
-        @click="$router.back()"
-      />
-      {{ data?.title }}
-    </h1>
-    <ContentRenderer v-if="data" :value="data" />
-    <div v-else>Blog not found</div>
+  <div class="m-auto max-w-3xl p-4">
+    <div v-if="!isOpenPasswordModal" class="text-white">
+      <div class="flex items-center text-white gap-4">
+        <!-- <UButton
+          icon="i-lucide-chevron-left"
+          size="xl"
+          variant="ghost"
+          class="text-white"
+          @click="$router.back()"
+        /> -->
+        <div>
+          <h1 class="text-white mb-0 text-3xl font-bold">{{ data?.title }}</h1>
+          <div class="text-neutral-400 text-base font-normal mt-2">
+            {{ data?.description }}
+          </div>
+        </div>
+      </div>
+      <USeparator class="mt-4" />
+      <div class="prose text-white">
+        <ContentRenderer v-if="data" :value="data" />
+      </div>
+    </div>
+    <div v-if="!data">Blog not found</div>
   </div>
 </template>

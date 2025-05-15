@@ -2,7 +2,6 @@
 @import "@nuxt/ui";
 @plugin "@tailwindcss/typography";
 
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,7 +9,7 @@
 @layer utilities {
   .container {
     @apply w-full p-4; /* DEFAULT: 1rem padding */
-    
+
     @screen sm {
       max-width: 640px;
       padding: 2rem;
@@ -29,6 +28,12 @@
     @screen 2xl {
       max-width: 1536px;
       padding: 6rem;
+    }
+  }
+
+  .prose {
+    * {
+      @apply text-white;
     }
   }
 }

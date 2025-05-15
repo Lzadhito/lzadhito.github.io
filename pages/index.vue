@@ -1,22 +1,34 @@
 <script lang="ts" setup>
-const { data } = await useAsyncData(() => queryCollection("content").all());
+// TODO: https://content.nuxt.com/docs/collections/define#collection-schema
+const { data: rawData } = await useAsyncData(() =>
+  queryCollection("content").all()
+);
+const data = (rawData?.value as any).filter((item: any) => item.meta.published);
 </script>
 
 <template>
-  <div class="prose max-w-screen md:-m-6 md:p-4 h-screen">
+  <div class="max-w-screen md:-m-6 md:p-8 h-screen">
     <div class="grid grid-cols-1 md:grid-cols-2 items-center h-full md:gap-4">
-      <div class="px-4 min-h-screen md:min-h-auto flex flex-col justify-center">
-        <h1 class="text-white">Laksamana Adhito</h1>
-        <p class="text-neutral-400 text-md">
+      <div
+        class="px-4 min-h-screen md:min-h-auto flex flex-col justify-center space-y-4"
+      >
+        <h1 class="text-white text-3xl font-bold">Laksamana Adhito</h1>
+        <p class="text-neutral-400 text-lg">
           Welcome! I am pouring everything I want about what I learn and for
-          some point, I hope some could benefited from my writings. Regardless,
-          opinions are my own.
+          some point, <br />
+          I hope some could benefited from my writings. Regardless, opinions are
+          my own.
         </p>
       </div>
-      <div class="md:border-l max-h-96 px-4 min-h-32 grid items-center py-0">
+      <div
+        class="md:border-l max-h-96 px-4 min-h-32 grid gap-4 items-center py-0.5 overflow-y-auto"
+      >
         <NuxtLink v-for="blog in data" :to="blog.stem">
           <UCard class="text-white font-medium">
-            {{ blog.title }}
+            <div>{{ blog.title }}</div>
+            <div class="font-light text-neutral-400 text-sm mt-1">
+              {{ blog.description }}
+            </div>
           </UCard>
         </NuxtLink>
       </div>
