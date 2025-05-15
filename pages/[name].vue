@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { format } from "date-fns";
+
 const route = useRoute();
 const { data } = await useAsyncData(route.params.name as string, () =>
   queryCollection("content").path(`/${route.params.name}`).first()
@@ -13,9 +15,9 @@ definePageMeta({
 
 const password = ref("");
 const showPassword = ref(false);
-
 const isAuthenticated = ref(false);
 const isError = ref(false);
+
 const isOpenPasswordModal = computed(() =>
   Boolean(data.value?.meta?.password && !isAuthenticated.value)
 );
@@ -79,8 +81,21 @@ function onSubmit() {
         /> -->
         <div>
           <h1 class="text-white mb-0 text-3xl font-bold">{{ data?.title }}</h1>
-          <div class="text-neutral-400 text-base font-normal mt-2">
-            {{ data?.description }}
+          <div class="text-neutral-400 text-base font-normal mt-2 space-y-2">
+            <div class="font-bold text-sm">
+              {{ format(data?.meta?.pubDate, "dd MMMM yyyy") }}
+              {{
+                data?.meta?.updatedAt
+                  ? `, Updated At ${format(
+                      data?.meta?.updatedAt,
+                      "dd MMMM yyyy"
+                    )}`
+                  : ""
+              }}
+            </div>
+            <div>
+              {{ data?.description }}
+            </div>
           </div>
         </div>
       </div>

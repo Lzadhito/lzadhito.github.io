@@ -1,5 +1,7 @@
 <script lang="ts" setup>
 // TODO: https://content.nuxt.com/docs/collections/define#collection-schema
+
+import { format } from "date-fns";
 const { data: rawData } = await useAsyncData(() =>
   queryCollection("content").all()
 );
@@ -25,9 +27,21 @@ const data = (rawData?.value as any).filter((item: any) => item.meta.published);
       >
         <NuxtLink v-for="blog in data" :to="blog.stem">
           <UCard class="text-white font-medium">
-            <div>{{ blog.title }}</div>
-            <div class="font-light text-neutral-400 text-sm mt-1">
-              {{ blog.description }}
+            <div class="space-y-1">
+              <div>{{ blog.title }}</div>
+              <div class="text-xs text-neutral-400">
+                {{
+                  blog.meta?.updatedAt
+                    ? `Updated at: ${format(
+                        blog.meta?.updatedAt,
+                        "dd MMMM yyyy"
+                      )}`
+                    : format(blog.meta?.pubDate, "dd MMMM yyyy")
+                }}
+              </div>
+              <div class="font-light text-neutral-400 text-sm">
+                {{ blog.description }}
+              </div>
             </div>
           </UCard>
         </NuxtLink>
