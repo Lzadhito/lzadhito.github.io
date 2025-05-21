@@ -1,8 +1,7 @@
 ---
-title: "Hello World"
-description: "Just a simple hello world for development"
-password: "123"
+title: "Good Job!"
+description: "This is a secret page"
 published: false
 ---
 
-Hello World! I'm trying so hard to make this work, duh.
+Now you understand how this website works, Congratulations!
