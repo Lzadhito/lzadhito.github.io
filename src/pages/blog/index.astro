@@ -23,7 +23,7 @@ const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueO
           {
             posts.map((post, index) => (
               <li>
-                <a href={`/blog/${post.id}/`} class="card shadow-sm h-32">
+                <a href={`/blog/${post.id}/`} class="card card-border shadow-sm h-32">
                   <div class="card-body ">
                     <h2 class="card-title truncate text-2xl!">{post.data.title}</h2>
                     <p class="line-clamp-2 text-sm line- ">{post.data.description}</p>
