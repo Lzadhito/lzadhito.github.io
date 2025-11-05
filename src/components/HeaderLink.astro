@@ -11,7 +11,7 @@ const isActive = href === pathname || href === "/" + (subpath?.[0] || "");
 
 <a
   href={href}
-  class:list={[className, "inline-block", { "border-b-4 border-b-green-600 font-extrabold": isActive }]}
+  class:list={[className, "inline-block", { "border-b-4 border-b-green-600 font-extrabold rounded-b-none": isActive }]}
   {...props}
 >
   <slot />

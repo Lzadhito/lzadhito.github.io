@@ -3,14 +3,14 @@ import { SITE_TITLE } from "../consts";
 import HeaderLink from "./HeaderLink.astro";
 ---
 
-<header class="px-2 bg-white shadow-lg">
-  <nav class="flex items-center justify-between">
-    <h2 class="font-bold">
-      <a href="/" class="py-4 px-2 text-black no-underline">{SITE_TITLE}</a>
-    </h2>
-    <div>
-      <HeaderLink class="text-base p-4" href="/">Home</HeaderLink>
-      <HeaderLink class="text-base p-4" href="/blog">Blog</HeaderLink>
+<header>
+  <nav class="navbar shadow pb-0 min-h-0">
+    <div class="flex-1">
+      <a href="/" class="btn btn-ghost text-xl">lzadhito</a>
     </div>
+    <ul class="menu menu-horizontal py-0">
+      <li><HeaderLink class="text-base py-3 p-4" href="/">Home</HeaderLink></li>
+      <li><HeaderLink class="text-base py-3 p-4" href="/blog">Blog</HeaderLink></li>
+    </ul>
   </nav>
 </header>
