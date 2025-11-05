@@ -60,7 +60,7 @@ h6 {
   color: rgb(var(--black));
   line-height: 1.2;
 }
-/* h1 {
+h1 {
   font-size: 3.052em;
 }
 h2 {
@@ -74,21 +74,14 @@ h4 {
 }
 h5 {
   font-size: 1.25em;
-} */
+}
 strong,
 b {
   font-weight: 700;
 }
-/* a {
-  text-decoration: none;
-  color: var(--accent);
-}
-a:hover {
-  color: var(--accent);
-} */
-/* p {
+p {
   margin-bottom: 1em;
-} */
+}
 .prose p {
   margin-bottom: 2em;
 }
@@ -111,6 +104,7 @@ code {
   padding: 2px 5px;
   background-color: rgb(var(--gray-light));
   border-radius: 2px;
+  @apply text-sm;
 }
 pre {
   padding: 1.5em;
