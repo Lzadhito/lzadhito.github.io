@@ -1,6 +1,7 @@
 ---
 import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import FormattedDate from "../../components/FormattedDate.astro";
 
 const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
 ---
@@ -8,12 +9,20 @@ const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueO
 <BaseLayout>
   <ul class="grid sm:grid-cols-2 gap-4 list-none">
     {
-      posts.map((post, index) => (
+      posts.map((post) => (
         <li>
-          <a href={`/blog/${post.id}/`} class="card card-border shadow-sm h-32">
-            <div class="card-body ">
+          <a href={`/blog/${post.id}/`} class="card card-border shadow-sm h-44">
+            <div class="card-body gap-0 space-y-0">
               <h2 class="card-title truncate text-2xl!">{post.data.title}</h2>
-              <p class="line-clamp-2 text-sm line- ">{post.data.description}</p>
+              <p class="line-clamp-2 text-sm py-0">{post.data.description}</p>
+              <div class="text-right">
+                <FormattedDate date={post.data.pubDate} />
+                {post.data.updatedDate ? (
+                  <div class="text-xs text-gray-500">
+                    Updated at <FormattedDate date={post.data.updatedDate} />
+                  </div>
+                ) : null}
+              </div>
             </div>
           </a>
         </li>
