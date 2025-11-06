@@ -11,9 +11,9 @@ const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueO
     {
       posts.map((post) => (
         <li>
-          <a href={`/blog/${post.id}/`} class="card card-border shadow-sm h-44">
+          <a href={`/blog/${post.id}/`} class="card card-border shadow-sm h-48">
             <div class="card-body gap-0 space-y-0">
-              <h2 class="card-title truncate text-2xl!">{post.data.title}</h2>
+              <h2 class="card-title text-2xl!">{post.data.title}</h2>
               <p class="line-clamp-2 text-sm py-0">{post.data.description}</p>
               <div class="text-right">
                 <FormattedDate date={post.data.pubDate} />

@@ -1,5 +1,5 @@
 ---
-title: 'Behavior and Money'
+title: 'PoM (1): Behavior and Money'
 description: 'Behvior matters more than intelligence in money'
 pubDate: 'Nov 06 2025'
 ---

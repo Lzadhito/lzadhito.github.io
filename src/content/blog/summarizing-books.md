@@ -1,6 +1,6 @@
 ---
-title: 'Summarizing Books'
-description: 'sets to the journey of summarizing readings to journal takeaways'
+title: 'Journaling Books'
+description: 'sets to the journey of summarizing readings by journaling takeaways'
 pubDate: 'Nov 05 2025'
 updatedDate: 'Nov 06 2025'
 ---
