@@ -1,6 +1,6 @@
 ---
 title: "PoM (4): Know What's Enough"
-description: 'It literally "Luck & Risk" as title chapter 2'
+description: 'Understand that we are humans then set our goals'
 pubDate: 'Nov 09 2025'
 ---
 
