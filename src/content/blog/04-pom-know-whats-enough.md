@@ -6,7 +6,7 @@ pubDate: 'Nov 09 2025'
 
 Know that after having much, we would crave more
 
-This is my journal of `Psychology of Money` chapter `Enough`. FYI currently I haven't read all the chapter yet, but I don't really get it why this topic explained early. I think this chapter is to either help us defining our goals with money or to explaining our limitation as a human.
+This is my journal of `The Psychology of Money` chapter `Enough`. FYI currently I haven't read all the chapter yet, but I don't really get it why this topic explained early. I think this chapter is to either help us defining our goals with money or to explaining our limitation as a human.
 
 I start with my existing knowledge about the humans.
 
