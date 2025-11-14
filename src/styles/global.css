@@ -68,20 +68,25 @@ h6 {
   line-height: 1.2;
 }
 h1 {
-  font-size: 3.052em;
+  @apply text-3xl mt-0 mb-6 leading-tight; /* leading-tight = 1.25 (closest to 1.2) */
 }
+
 h2 {
-  font-size: 2.441em;
+  @apply text-xl mt-8 mb-4 leading-snug; /* leading-snug = 1.375 (closest to 1.4) */
 }
+
 h3 {
-  font-size: 1.953em;
+  @apply text-lg mt-7 mb-2 leading-relaxed; /* leading-relaxed = 1.625 (closest to 1.555) */
 }
+
 h4 {
-  font-size: 1.563em;
+  @apply mt-5 mb-2 leading-snug; /* leading-snug = 1.375 (closest to 1.428) */
 }
+
 h5 {
-  font-size: 1.25em;
+  @apply text-base mt-4 mb-2 leading-normal;
 }
+
 strong,
 b {
   font-weight: 700;

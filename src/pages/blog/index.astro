@@ -7,6 +7,7 @@ const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueO
 ---
 
 <BaseLayout>
+  <p class="alert text-sm">Welcome! I'm writing what I've learned here. Please, be my guest.</p>
   <ul class="grid sm:grid-cols-2 gap-4 list-none">
     {
       posts.map((post) => (

@@ -4,7 +4,7 @@ import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import { SITE_DESCRIPTION, SITE_TITLE } from "../consts";
 
-const { title = SITE_TITLE, description = SITE_DESCRIPTION } = Astro.props;
+const { title = SITE_TITLE, description = SITE_DESCRIPTION, class: className = "" } = Astro.props;
 ---
 
 <html lang="en" data-theme="lemonade">
@@ -14,7 +14,7 @@ const { title = SITE_TITLE, description = SITE_DESCRIPTION } = Astro.props;
 
   <body class="min-h-screen flex flex-col">
     <Header />
-    <main class="flex-1 w-full max-w-full m-0">
+    <main class="flex-1 w-full max-w-full m-0" class:list={className}>
       <slot />
     </main>
     <Footer />
