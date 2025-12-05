@@ -28,7 +28,7 @@ Finance is not an exception. If you always spend your money while it lasts, then
 
 Even though I don't even remember if the "frugal" word exist, but I hope you get the point. If your parents not rich, or your parent cannot give you sufficient money for you to start a business or startup, then be patient on saving your own! And if your parents rich but somehow now the inherited money starts to run out, or your parents business starts to fail when your parents no longer in charge, and you barely have an income that cover your daily needs, then you need to adjust what your daily needs!
 
-Saving, limit the expenses, adjusting the standards is one of the important things in financial. If you don't do these early then you will be forced to have a limited expense, and missing the needs that still in your standard. You might need to gain certain of money for you to start a business, to start risky things, and to have a freedom.  
+Saving, limit the expenses, adjusting the standards is one of the important things in financial. You might need to gain certain of money for you to start a business, to start risky things, and to have a freedom. If you don't do these early then you will be forced to have a limited expense, and missing the needs that still in your standard.
 
 ## Career, Business, and Networking
 
