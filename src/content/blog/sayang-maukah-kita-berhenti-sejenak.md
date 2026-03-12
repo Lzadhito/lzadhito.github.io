@@ -15,3 +15,5 @@ Betul kebodohan, kurangnya penerapan ilmu, dan dosa dosa kita adalah penyebab da
 Berhenti untuk merenungkan apa yang terjadi pada kita. Kita gali sedalam dalamnya, tidak gegabah dalam menentukan kebodohan apa yang terjadi dalam kehidupan kita. Lalu setelah itu kita tentukan dari pintu mana kita akan mengobati kebodohan kita. Pintu ilmu dan pintu amal selalu terbuka luas untuk kita.
 
 Kita sudah melangkah ke jalan persiapan, jalan dimana kita memahami hujan pasti datang dan payung adalah senjata kita. Dengan payung yang kita sudah siapkan, mungkin kita bisa berhenti sejenak. Apakah kita mau hidup di dunia yang setiap detik selalu hujan?
+
+Jujur hustle Dito dengan perhelatan kerja dan karir ini membuat pandangan Dito menyempit. Insyaallah suatu saat nanti akan ada hari dimana kita bisa menikmati bersama sama kehidupan kita, dengan anak anak, dengan karpet ilmu, dan hal hal yang bersingunggan langsung dengan mimpi kita bersama. Doa yang jujur adalah doa yang paling dekat dengan pengabulan Allah.
