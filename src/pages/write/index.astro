@@ -1,0 +1,54 @@
+---
+// Private-by-obscurity composer: it only works with a GitHub token stored on this device.
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#24221E" />
+    <link rel="manifest" href="/write/manifest.webmanifest" />
+    <link rel="icon" href="/write/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/write/icon-192.png" />
+    <title>Write</title>
+    <style is:global>
+      :root {
+        --bg: #f5f3ee; --fg: #24221e; --muted: #625d54; --rule: #d6d1c6; --accent: #2941a3; --on-accent: #f5f3ee;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #1b1a18; --fg: #e7e3da; --muted: #a39d92; --rule: #3a3834; --accent: #9db0f2; --on-accent: #1b1a18; }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+      #app { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+      header, footer.bar { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-bottom: 1px solid var(--rule); }
+      footer.bar { border-bottom: 0; border-top: 1px solid var(--rule); padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); overflow-x: auto; }
+      header .grow { flex: 1; min-width: 0; }
+      button { font: inherit; padding: .5rem .8rem; border-radius: .5rem; border: 1px solid var(--rule); background: transparent; color: var(--fg); min-height: 44px; }
+      button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+      button.danger { color: #c0392b; }
+      button:disabled { opacity: .5; }
+      input, textarea { font: inherit; color: var(--fg); background: transparent; border: 0; outline: 0; width: 100%; }
+      input.title { font-weight: 600; font-size: 1.1rem; padding: .6rem .9rem; border-bottom: 1px solid var(--rule); }
+      textarea#body { flex: 1; resize: none; padding: .9rem; font-size: 1.15rem; line-height: 1.6; }
+      .status { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+      .status.live { color: var(--accent); }
+      .list { flex: 1; overflow: auto; }
+      .row { display: block; width: 100%; text-align: left; padding: .8rem .9rem; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; min-height: 0; }
+      .row small { display: block; color: var(--muted); }
+      .form { padding: .9rem; display: flex; flex-direction: column; gap: .8rem; overflow: auto; }
+      .form label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; color: var(--muted); }
+      .form input { border: 1px solid var(--rule); border-radius: .5rem; padding: .6rem; color: var(--fg); }
+      .msg { padding: .5rem .9rem; font-size: .85rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      import "../../composer/app";
+    </script>
+  </body>
+</html>
