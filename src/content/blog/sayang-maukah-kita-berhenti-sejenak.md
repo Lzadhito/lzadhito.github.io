@@ -2,6 +2,7 @@
 title: "Sayang, maukah kita berhenti sejenak?"
 description: "Bagimana jika sebenarnya langit tidak setiap saat hujan?"
 pubDate: "Mar 11 2026"
+updatedDate: "2026-09-27T14:04:37.155Z"
 ---
 
 Assalamualaikum Radhiyya,
