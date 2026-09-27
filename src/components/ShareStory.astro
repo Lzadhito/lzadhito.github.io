@@ -73,6 +73,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
 </dialog>
 
 <script>
+  import { detectIOS, tryInstagramStoryDeepLink } from "../scripts/instagramShare";
   import { canvasToBlob, renderStoryCard, slugifyFilename } from "../scripts/storyCard";
 
   const triggers = document.querySelectorAll<HTMLButtonElement>(".share-story-trigger");
@@ -139,6 +140,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
       share?: (data?: ShareData) => Promise<void>;
     };
     const canShareFiles = typeof nav.canShare === "function" && typeof File !== "undefined";
+    const onIOS = detectIOS();
     shareBtn.textContent = canShareFiles
       ? (shareBtn.dataset.labelShare ?? "Share to Instagram Story")
       : (shareBtn.dataset.labelFallback ?? "Save story image");
@@ -152,15 +154,28 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
       }
     }
 
-    // One tap: copy the link, then jump straight into sharing (or saving) the image —
-    // no separate "copy link" step required.
+    // One tap does everything: on iOS, try to jump straight into Instagram's Story
+    // composer (image + link both land on the clipboard as part of that attempt).
+    // Everywhere else — and if that deep link doesn't land — fall back to the system
+    // share sheet (Android reliably surfaces Instagram there) or a plain download,
+    // always with the link copied first.
     shareBtn.addEventListener("click", async () => {
       shareBtn.disabled = true;
-      setStatus("Copying link…");
-      const copied = await copyLink();
-      setStatus(copied ? "Link copied. Preparing image…" : "Preparing image…");
+      setStatus("Preparing image…");
       try {
         const blob = await getBlob();
+
+        if (onIOS) {
+          setStatus("Opening Instagram…");
+          const opened = await tryInstagramStoryDeepLink(blob, url);
+          if (opened) {
+            setStatus("Opening Instagram Story… the link is already on your clipboard to paste as a sticker.");
+            shareBtn.disabled = false;
+            return;
+          }
+        }
+
+        const copied = await copyLink();
         const file = new File([blob], filename, { type: "image/png" });
         if (canShareFiles && nav.canShare!({ files: [file] })) {
           try {
@@ -188,7 +203,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
             : `Image saved. Open Instagram → new Story → pick this photo, then add this link as a sticker: ${url}`,
         );
       } catch {
-        setStatus(copied ? "Link copied, but the image failed to generate." : "Something went wrong generating the image.");
+        setStatus("Something went wrong preparing the share.");
       }
       shareBtn.disabled = false;
     });
