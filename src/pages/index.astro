@@ -1,11 +1,13 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import PostList from "../components/PostList.astro";
 ---
 
-<BaseLayout class="flex items-center justify-center flex-col">
-  <h1 class="font-medium pt-8 mb-0!">Laksamana Adhito</h1>
-  <sub class="block pb-4 pt-2 text-neutral-500">Dito (dit·to, /'didō/)</sub>
-  <p class="text-base">
-    I'm still working on my portfolio. Meanwhile, please check my blog through the upper right of the website.
-  </p>
+<BaseLayout>
+  <div class="flex items-center justify-center flex-col text-center">
+    <h1 class="font-medium pt-8 mb-0!">Laksamana Adhito</h1>
+    <sub class="block pb-4 pt-2 text-neutral-500">Dito (dit·to, /'didō/)</sub>
+    <p class="text-base">I'm still working on my portfolio. Meanwhile, I'm writing what I've learned here. Please, be my guest.</p>
+  </div>
+  <PostList limit={5} heading />
 </BaseLayout>

@@ -1,33 +1,8 @@
 ---
-import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import FormattedDate from "../../components/FormattedDate.astro";
-
-const posts = (await getCollection("blog")).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+import PostList from "../../components/PostList.astro";
 ---
 
 <BaseLayout>
-  <p class="alert text-sm">Welcome! I'm writing what I've learned here. Please, be my guest.</p>
-  <ul class="grid sm:grid-cols-2 gap-4 list-none">
-    {
-      posts.map((post) => (
-        <li>
-          <a href={`/blog/${post.id}/`} class="card card-border shadow-sm min-h-fit max-h-fit">
-            <div class="card-body gap-0 space-y-0">
-              <h2 class="card-title text-2xl!">{post.data.title}</h2>
-              <p class="line-clamp-2 text-sm py-0">{post.data.description}</p>
-              <div class="text-right">
-                <FormattedDate date={post.data.pubDate} />
-                {post.data.updatedDate ? (
-                  <div class="text-xs text-gray-500">
-                    Updated at <FormattedDate date={post.data.updatedDate} />
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </a>
-        </li>
-      ))
-    }
-  </ul></BaseLayout
->
+  <PostList grouped />
+</BaseLayout>

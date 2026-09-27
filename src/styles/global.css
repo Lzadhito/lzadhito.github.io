@@ -1,6 +1,14 @@
 @import "tailwindcss";
-@plugin "daisyui" {
-  themes: lemonade;
+
+@theme {
+  --color-base-100: oklch(98.71% 0.02 123.72);
+  --color-base-200: oklch(91.8% 0.018 123.72);
+  --color-base-content: oklch(19.742% 0.004 123.72);
+}
+
+html {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
 }
 
 /*

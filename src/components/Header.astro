@@ -1,16 +1,9 @@
 ---
 import { SITE_TITLE } from "../consts";
-import HeaderLink from "./HeaderLink.astro";
 ---
 
 <header>
-  <nav class="navbar shadow pb-0 min-h-0">
-    <div class="flex-1">
-      <a href="/" class="btn btn-ghost text-xl">lzadhito</a>
-    </div>
-    <ul class="menu menu-horizontal py-0">
-      <li><HeaderLink class="text-base py-3 p-4" href="/">Home</HeaderLink></li>
-      <li><HeaderLink class="text-base py-3 p-4" href="/blog">Blog</HeaderLink></li>
-    </ul>
-  </nav>
+  <div class="flex items-center w-full p-2 pb-0">
+    <a href="/" class="inline-flex items-center justify-center h-10 px-4 rounded-lg text-xl font-semibold hover:bg-base-content/10 transition-colors">{SITE_TITLE}</a>
+  </div>
 </header>
