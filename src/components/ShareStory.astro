@@ -66,8 +66,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     </div>
 
     <p class="share-story-hint">
-      Your post link is copied automatically. A story editor can't follow a link baked into a photo, so once you're in
-      there, add it as a <strong>Link sticker</strong>.
+      Link copied automatically — add it as a <strong>Link sticker</strong> in your story.
     </p>
     <p class="share-story-status" role="status" aria-live="polite"></p>
     <button type="button" class="share-story-copy">Copy link again</button>
@@ -104,10 +103,6 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
 
     let blobPromise: Promise<Blob> | null = null;
     let opened = false;
-    // One-tap auto-share only makes sense where "tap" is the whole interaction (a touch
-    // device, no hover to preview the trigger first). On desktop, a mouse click should just
-    // open the dialog — the share/download only runs once the person clicks "Share" in it.
-    const isTouchDevice = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
 
     function setStatus(text: string) {
       status.textContent = text;
@@ -125,10 +120,9 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
       } catch {
         loading.textContent = "Couldn't render a preview, but sharing still works.";
       }
-      // On touch devices, one tap on the trigger is the whole interaction — kick the
-      // share flow off right away instead of waiting for a second tap below. On desktop
-      // this is skipped; the dialog just opens and waits for an explicit click.
-      if (isTouchDevice) void runShare();
+      // One tap on the trigger is the whole interaction — kick the share flow off
+      // right away instead of waiting for a second tap on the "Share" button below.
+      void runShare();
     }
 
     trigger.addEventListener("click", open);
@@ -168,9 +162,8 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     // composer (image + link both land on the clipboard as part of that attempt).
     // Everywhere else — and if that deep link doesn't land — fall back to the system
     // share sheet (Android reliably surfaces Instagram there) or a plain download,
-    // always with the link copied first. On touch devices this runs automatically as
-    // soon as the preview is ready (see `open()`); the "Share" button runs it on
-    // desktop (where opening the dialog alone doesn't trigger it) or re-runs it to retry.
+    // always with the link copied first. Runs automatically as soon as the preview
+    // is ready (see `open()`); the "Share" button just re-runs it, e.g. to retry.
     let sharing = false;
     async function runShare() {
       if (sharing) return;
@@ -211,8 +204,8 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
         downloadBlob(blob, filename);
         setStatus(
           copied
-            ? "Image saved & link copied. Open your story editor, pick this photo, then paste the link as a sticker."
-            : `Image saved. Open your story editor, pick this photo, then add this link as a sticker: ${url}`,
+            ? "Image saved & link copied. Paste it as a sticker in your story."
+            : `Image saved. Add this link as a sticker: ${url}`,
         );
       } catch {
         setStatus("Something went wrong preparing the share.");
