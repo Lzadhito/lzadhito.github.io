@@ -10,31 +10,193 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 ---
 
 <BaseLayout title={`lzadhito - ${title}`} description={description}>
-  <article>
-    <div class="w-full">
-      {
-        heroImage && (
-          <Image width={1020} height={510} src={heroImage} alt="" class="block mx-auto rounded-xl shadow-lg" />
-        )
-      }
-    </div>
-    <div class="w-full max-w-3xl mx-auto p-4 text-gray-700">
-      <div class="py-4 text-center leading-none">
-        <div class="mb-2 text-gray-500">
-          <FormattedDate date={pubDate} />
-        </div>
-        <h1>{title}</h1>
-        {description && <p class="text-gray-500">{description}</p>}
-        <hr />
+  <article class="post">
+    <header class="post-header">
+      <h1>{title}</h1>
+      <div class="meta">
+        <FormattedDate date={pubDate} />
+        {
+          updatedDate && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>
+                updated <FormattedDate date={updatedDate} />
+              </span>
+            </>
+          )
+        }
       </div>
+      {description && <p class="lede">{description}</p>}
+    </header>
+    {
+      heroImage && (
+        <Image width={1020} height={510} src={heroImage} alt="" class="block mx-auto mb-8 rounded-xl shadow-lg" />
+      )
+    }
+    <div class="post-body">
       <slot />
-      {
-        updatedDate && (
-          <div class="italic text-right text-gray-500 text-base">
-            Last updated on <FormattedDate date={updatedDate} />
-          </div>
-        )
-      }
     </div>
+    <footer class="post-footer">
+      <a href="/blog">← All posts</a>
+    </footer>
   </article>
 </BaseLayout>
+
+<style is:global>
+  .post {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 0.5rem 0 1rem;
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: #2b2f2a;
+  }
+  .post .post-footer a {
+    font-size: 0.875rem;
+    color: #6b7280;
+    text-decoration: none;
+  }
+  .post .post-footer a:hover {
+    color: #111;
+    text-decoration: underline;
+  }
+  .post .post-header {
+    margin: 2rem 0 2.5rem;
+  }
+  .post .post-header h1 {
+    margin: 0;
+    font-size: 2.25rem;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    color: #111;
+  }
+  .post .meta {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+  .post .lede {
+    margin: 1.25rem 0 0;
+    font-size: 1.25rem;
+    line-height: 1.5;
+    color: #4b5563;
+  }
+
+  /* Article body */
+  .post-body > * + * {
+    margin-top: 1.25em;
+  }
+  .post-body p {
+    margin: 0;
+    margin-top: 1.25em;
+  }
+  .post-body h2,
+  .post-body h3,
+  .post-body h4 {
+    margin: 2.25em 0 0;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: #111;
+  }
+  .post-body h2 {
+    font-size: 1.5rem;
+  }
+  .post-body h3 {
+    font-size: 1.25rem;
+  }
+  .post-body h4 {
+    font-size: 1.0625rem;
+  }
+  .post-body h2 + *,
+  .post-body h3 + *,
+  .post-body h4 + * {
+    margin-top: 0.75em;
+  }
+  .post-body a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: #9ca3af;
+  }
+  .post-body a:hover {
+    text-decoration-color: currentColor;
+  }
+  .post-body ul,
+  .post-body ol {
+    margin: 1.25em 0 0;
+    padding-left: 1.5rem;
+  }
+  .post-body ul {
+    list-style: disc;
+  }
+  .post-body ol {
+    list-style: decimal;
+  }
+  .post-body li {
+    margin: 0.4em 0;
+    padding-left: 0.25rem;
+  }
+  .post-body li > p {
+    margin: 0;
+  }
+  .post-body blockquote {
+    margin: 1.5em 0 0;
+    padding: 0 0 0 1.25rem;
+    border-left: 3px solid #d1d5db;
+    font-size: inherit;
+    font-style: italic;
+    color: #4b5563;
+  }
+  .post-body blockquote > p:first-child {
+    margin-top: 0;
+  }
+  .post-body hr {
+    margin: 2.5em 0;
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+  }
+  .post-body code {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: #eef0e8;
+    font-size: 0.875em;
+  }
+  .post-body pre {
+    margin-top: 1.5em;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .post-body pre code {
+    padding: 0;
+    background: none;
+  }
+  .post-body strong {
+    font-weight: 700;
+    color: #111;
+  }
+  .post .post-footer {
+    margin-top: 4rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  @media (max-width: 720px) {
+    .post {
+      font-size: 1rem;
+    }
+    .post .post-header h1 {
+      font-size: 1.875rem;
+    }
+    .post .lede {
+      font-size: 1.125rem;
+    }
+  }
+</style>
