@@ -18,6 +18,13 @@ vi.mock("../github", async (orig) => ({
   unpublish: (...a: [unknown, Draft]) => unpublishMock(...a),
 }));
 
+const authMock = vi.hoisted(() => ({
+  requestDeviceCode: vi.fn(),
+  pollForToken: vi.fn(),
+}));
+vi.mock("../config", () => ({ AUTH: { clientId: "cid", proxy: "https://proxy.test" } }));
+vi.mock("../auth", async (orig) => ({ ...(await orig<typeof import("../auth")>()), ...authMock }));
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const online = (v: boolean) => Object.defineProperty(navigator, "onLine", { value: v, configurable: true });
@@ -222,6 +229,39 @@ describe("drafts and settings views", () => {
     $<HTMLButtonElement>("#check").click();
     await tick(30);
     expect($("#tokenInfo").textContent).toMatch(/Token works/);
+  });
+
+  it("signs in with GitHub and stores the token", async () => {
+    authMock.requestDeviceCode.mockResolvedValue({
+      device_code: "dc", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 5,
+    });
+    authMock.pollForToken.mockResolvedValue("gho_new");
+    await boot("#/settings");
+    $<HTMLButtonElement>("#signin").click();
+    await tick(50);
+    expect(authMock.requestDeviceCode).toHaveBeenCalled();
+    const saved = JSON.parse(localStorage.getItem("composer-settings")!);
+    expect(saved).toMatchObject({ token: "gho_new" });
+    expect(saved.tokenSavedAt).toBeGreaterThan(0);
+    expect(location.hash).toBe("#/");
+  });
+
+  it("shows the code while waiting, and errors if sign-in fails", async () => {
+    authMock.requestDeviceCode.mockResolvedValue({
+      device_code: "dc", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 5,
+    });
+    authMock.pollForToken.mockReturnValue(new Promise(() => {})); // pending forever
+    await boot("#/settings");
+    $<HTMLButtonElement>("#signin").click();
+    await tick(50);
+    expect($("#userCode").textContent).toBe("ABCD-1234");
+    authMock.pollForToken.mockReset();
+    authMock.requestDeviceCode.mockRejectedValue(new Error("Device flow must be enabled"));
+    await boot("#/settings");
+    $<HTMLButtonElement>("#signin").click();
+    await tick(50);
+    expect($("#signinInfo").textContent).toBe("Device flow must be enabled");
+    expect($<HTMLButtonElement>("#signin").disabled).toBe(false);
   });
 
   it("saves settings to localStorage", async () => {

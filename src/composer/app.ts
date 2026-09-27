@@ -1,3 +1,5 @@
+import { AUTH } from "./config";
+import { authEnabled, pollForToken, requestDeviceCode } from "./auth";
 import { type Draft, deleteDraft, getDraft, listDrafts, newId, saveDraft } from "./db";
 import { checkToken, effectiveTitle, loadSettings, postUrl, publish, saveSettings, unpublish } from "./github";
 
@@ -234,6 +236,11 @@ function settingsView() {
   app.innerHTML = `
     <header><button id="back">←</button><span class="grow"><b>Settings</b></span></header>
     <div class="form">
+      ${
+        authEnabled(AUTH)
+          ? `<button class="primary" id="signin">Sign in with GitHub</button><div class="msg" id="signinInfo"></div>`
+          : ""
+      }
       <label>GitHub fine-grained token (this repo only, Contents: read &amp; write)
         <input id="token" type="password" autocomplete="off" value="${esc(s.token)}" /></label>
       <div class="msg" id="tokenInfo">${tokenInfo(s)}</div>
@@ -244,6 +251,31 @@ function settingsView() {
       <div class="msg">The token is stored only in this browser. Delete drafts: long-press one in the list.</div>
     </div>`;
   document.getElementById("back")!.onclick = () => history.back();
+  const signin = document.getElementById("signin");
+  if (signin)
+    signin.onclick = async () => {
+      const info = document.getElementById("signinInfo")!;
+      const abort = new AbortController();
+      signin.setAttribute("disabled", "");
+      try {
+        info.textContent = "Contacting GitHub…";
+        const code = await requestDeviceCode(AUTH);
+        info.innerHTML = `Enter code <b id="userCode">${esc(code.user_code)}</b> at GitHub, then approve.
+          <button id="openGh">Copy code &amp; open GitHub</button> <button id="cancelGh">Cancel</button>`;
+        document.getElementById("openGh")!.onclick = () => {
+          void navigator.clipboard?.writeText(code.user_code).catch(() => {});
+          window.open(code.verification_uri, "_blank");
+        };
+        document.getElementById("cancelGh")!.onclick = () => abort.abort();
+        const token = await pollForToken(AUTH, code, { signal: abort.signal });
+        saveSettings({ ...loadSettings(), token, tokenSavedAt: Date.now() });
+        location.hash = "#/";
+        void sync();
+      } catch (e) {
+        info.textContent = (e as Error).message;
+        signin.removeAttribute("disabled");
+      }
+    };
   document.getElementById("check")!.onclick = async () => {
     const info = document.getElementById("tokenInfo")!;
     const saved = loadSettings();
