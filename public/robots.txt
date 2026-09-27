@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /write/
+
+Sitemap: https://lzadhito.github.io/sitemap-index.xml

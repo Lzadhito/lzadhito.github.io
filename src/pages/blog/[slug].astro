@@ -1,0 +1,55 @@
+---
+import { render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import MorePosts from '../../components/MorePosts.astro';
+import { getPosts, postExcerpt, postLabel, readingMinutes } from '../../lib/posts';
+import { longDate, noteStamp } from '../../lib/format';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((post) => ({
+    params: { slug: post.data.slug },
+    props: { post, more: posts.filter((p) => p.id !== post.id).slice(0, 3) },
+  }));
+}
+
+const { post, more } = Astro.props;
+const { Content } = await render(post);
+const isNote = post.data.type === 'note';
+const label = postLabel(post);
+const minutes = readingMinutes(post.body ?? '');
+---
+
+<BaseLayout
+  title={label}
+  description={postExcerpt(post)}
+  image={`/og/${post.data.slug}.png`}
+  type="article"
+  publishedTime={post.data.published}
+>
+  <div class="stack">
+    {
+      isNote ? (
+        <article>
+          <time class="meta" datetime={post.data.created.toISOString()}>
+            {noteStamp(post.data.created)}
+          </time>
+          <div class="note-body" style="margin-top: var(--space-xl)">
+            <Content />
+          </div>
+        </article>
+      ) : (
+        <article>
+          <h1 class="essay-title">{post.data.title}</h1>
+          <p class="meta" style="margin: var(--space-sm) 0 var(--space-2xl)">
+            <time datetime={post.data.published.toISOString()}>{longDate(post.data.published)}</time>, {minutes} min read
+          </p>
+          <div class="essay-body">
+            <Content />
+          </div>
+        </article>
+      )
+    }
+    <MorePosts posts={more} />
+  </div>
+</BaseLayout>

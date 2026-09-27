@@ -1,16 +1,16 @@
 ---
-import { SITE_TITLE } from "../consts";
-import HeaderLink from "./HeaderLink.astro";
+import { AUTHOR } from '../consts';
+
+const path = Astro.url.pathname;
+const links = [
+  { href: '/blog/', label: 'Blog', current: path.startsWith('/blog') },
+  { href: '/about/', label: 'About', current: path.startsWith('/about') },
+];
 ---
 
-<header>
-  <nav class="navbar shadow pb-0 min-h-0">
-    <div class="flex-1">
-      <a href="/" class="btn btn-ghost text-xl">lzadhito</a>
-    </div>
-    <ul class="menu menu-horizontal py-0">
-      <li><HeaderLink class="text-base py-3 p-4" href="/">Home</HeaderLink></li>
-      <li><HeaderLink class="text-base py-3 p-4" href="/blog">Blog</HeaderLink></li>
-    </ul>
+<header class="site-header">
+  <a class="site-name" href="/">{AUTHOR}</a>
+  <nav class="nav" aria-label="Main">
+    {links.map((l) => <a href={l.href} aria-current={l.current ? 'page' : undefined}>{l.label}</a>)}
   </nav>
 </header>

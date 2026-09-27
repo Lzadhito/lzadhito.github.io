@@ -1,0 +1,23 @@
+---
+import { listDate } from '../lib/format';
+import { postLabel, postUrl, type Post } from '../lib/posts';
+
+interface Props {
+  posts: Post[];
+}
+const { posts } = Astro.props;
+---
+
+<ul class="post-list">
+  {
+    posts.map((post) => (
+      <li>
+        <a class:list={['post-row', post.data.type]} href={postUrl(post)}>
+          <time class="meta" datetime={post.data.published.toISOString()}>{listDate(post.data.published)}</time>
+          <span class="meta">{post.data.type}</span>
+          <span class="post-row-text">{postLabel(post)}</span>
+        </a>
+      </li>
+    ))
+  }
+</ul>

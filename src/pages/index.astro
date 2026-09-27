@@ -1,11 +1,27 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+import { getEntry, render } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostList from '../components/PostList.astro';
+import { getPosts } from '../lib/posts';
+
+const intro = await getEntry('pages', 'intro');
+const { Content } = await render(intro!);
+const latest = (await getPosts()).slice(0, 5);
 ---
 
-<BaseLayout class="flex items-center justify-center flex-col">
-  <h1 class="font-medium pt-8 mb-0!">Laksamana Adhito</h1>
-  <sub class="block pb-4 pt-2 text-neutral-500">Dito (dit·to, /'didō/)</sub>
-  <p class="text-base">
-    I'm still working on my portfolio. Meanwhile, please check my blog through the upper right of the website.
-  </p>
+<BaseLayout>
+  <div class="stack">
+    <div class="intro"><Content /></div>
+    <section aria-labelledby="latest">
+      <h2 id="latest" class="section-label">Latest</h2>
+      <PostList posts={latest} />
+      <a class="more-link" href="/blog/">All posts</a>
+    </section>
+  </div>
 </BaseLayout>
+
+<style>
+  .intro :global(p) {
+    margin: 0;
+  }
+</style>

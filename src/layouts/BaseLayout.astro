@@ -1,22 +1,79 @@
 ---
-import BaseHead from "../components/BaseHead.astro";
-import Footer from "../components/Footer.astro";
-import Header from "../components/Header.astro";
-import { SITE_DESCRIPTION, SITE_TITLE } from "../consts";
+import '../styles/global.css';
+import hankenUrl from '../assets/fonts/web/hanken-grotesk-latin-wght-normal.woff2?url';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { AUTHOR, SITE_DESCRIPTION, SITE_URL } from '../consts';
 
-const { title = SITE_TITLE, description = SITE_DESCRIPTION, class: className = "" } = Astro.props;
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string; // path, e.g. /og/default.png
+  type?: 'website' | 'article';
+  publishedTime?: Date;
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description = SITE_DESCRIPTION,
+  image = '/og/default.png',
+  type = 'website',
+  publishedTime,
+  noindex = false,
+} = Astro.props;
+
+const fullTitle = title ? `${title} — ${AUTHOR}` : AUTHOR;
+const canonical = new URL(Astro.url.pathname, SITE_URL).toString();
+const imageUrl = new URL(image, SITE_URL).toString();
 ---
 
-<html lang="en" data-theme="lemonade">
+<!doctype html>
+<html lang="en">
   <head>
-    <BaseHead title={title} description={description} />
-  </head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
 
-  <body class="min-h-screen flex flex-col">
-    <Header />
-    <main class="flex-1 w-full max-w-full m-0" class:list={className}>
-      <slot />
-    </main>
-    <Footer />
+    <meta name="theme-color" content="#F8FDEF" />
+    <script is:inline>
+      // Light by default; dark only if the reader chose it. Runs before paint to avoid a flash.
+      try {
+        if (localStorage.getItem('theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark';
+          document.querySelector('meta[name="theme-color"]').content = '#151614';
+        }
+      } catch (e) {}
+    </script>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="alternate" type="application/rss+xml" title={AUTHOR} href="/rss.xml" />
+    <link rel="preload" href={hankenUrl} as="font" type="font/woff2" crossorigin />
+
+    <meta property="og:site_name" content={AUTHOR} />
+    <meta property="og:type" content={type} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={imageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    {publishedTime && <meta property="article:published_time" content={publishedTime.toISOString()} />}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+  </head>
+  <body>
+    <div class="column">
+      <Header />
+      <main>
+        <slot />
+      </main>
+      <Footer />
+    </div>
   </body>
 </html>
