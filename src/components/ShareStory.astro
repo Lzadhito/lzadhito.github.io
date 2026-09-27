@@ -48,28 +48,30 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     <button type="button" class="share-story-close" aria-label="Close">✕</button>
   </div>
 
-  <div class="share-story-preview">
-    <canvas class="share-story-canvas" width="1080" height="1920"></canvas>
-    <p class="share-story-loading">Preparing your story card…</p>
-  </div>
+  <div class="share-story-scroll">
+    <div class="share-story-preview">
+      <canvas class="share-story-canvas" width="1080" height="1920"></canvas>
+      <p class="share-story-loading">Preparing your story card…</p>
+    </div>
 
-  <div class="share-story-actions">
-    <button
-      type="button"
-      class="share-story-share"
-      data-label-share="Share to Instagram Story"
-      data-label-fallback="Save story image"
-    >
-      Share to Instagram Story
-    </button>
-  </div>
+    <div class="share-story-actions">
+      <button
+        type="button"
+        class="share-story-share"
+        data-label-share="Share to Instagram Story"
+        data-label-fallback="Save story image"
+      >
+        Share to Instagram Story
+      </button>
+    </div>
 
-  <p class="share-story-hint">
-    Your post link is copied automatically. Instagram Stories can't follow a link baked into a photo, so once you're in the
-    story editor, add it as a <strong>Link sticker</strong>.
-  </p>
-  <p class="share-story-status" role="status" aria-live="polite"></p>
-  <button type="button" class="share-story-copy">Copy link again</button>
+    <p class="share-story-hint">
+      Your post link is copied automatically. Instagram Stories can't follow a link baked into a photo, so once you're in the
+      story editor, add it as a <strong>Link sticker</strong>.
+    </p>
+    <p class="share-story-status" role="status" aria-live="polite"></p>
+    <button type="button" class="share-story-copy">Copy link again</button>
+  </div>
 </dialog>
 
 <script>
@@ -227,12 +229,19 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
 
 <style>
   .share-story-dialog {
-    width: min(360px, calc(100vw - 2rem));
-    padding: 1.25rem;
+    box-sizing: border-box;
+    width: min(380px, calc(100vw - 2rem));
+    max-height: min(640px, calc(100dvh - 2rem));
+    margin: auto;
+    padding: 1.1rem 1.1rem 1.25rem;
     border: 0;
-    border-radius: 1rem;
+    border-radius: 1.1rem;
     box-shadow: var(--box-shadow);
     color: rgb(var(--gray-dark));
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   .share-story-dialog::backdrop {
     background: rgba(15, 18, 25, 0.55);
@@ -241,30 +250,48 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.75rem;
+    flex: 0 0 auto;
+    margin-bottom: 0.6rem;
   }
   .share-story-head h2 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 1rem;
+    font-weight: 600;
   }
   .share-story-close {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
     border: 0;
+    border-radius: 999px;
     background: none;
-    font-size: 1rem;
+    font-size: 0.9rem;
     line-height: 1;
-    padding: 0.25rem;
     cursor: pointer;
-    color: inherit;
+    color: rgb(var(--gray));
+  }
+  .share-story-close:hover {
+    background: rgb(var(--gray-light));
+    color: rgb(var(--gray-dark));
+  }
+  .share-story-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .share-story-preview {
     position: relative;
     aspect-ratio: 1080 / 1920;
     width: 100%;
-    max-height: 55vh;
+    max-height: 38dvh;
     margin: 0 auto;
     border-radius: 0.75rem;
     overflow: hidden;
-    background: rgb(var(--gray-light));
+    /* Same surface tone as the card itself so the preview reads as one continuous
+       object instead of a canvas boxed inside an unrelated gray frame. */
+    background: #e1e6d9;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -286,47 +313,68 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     color: rgb(var(--gray));
   }
   .share-story-actions {
-    margin-top: 1rem;
+    flex: 0 0 auto;
+    margin-top: 0.9rem;
   }
   .share-story-share {
     width: 100%;
-    padding: 0.75rem 1rem;
+    padding: 0.7rem 1rem;
     border-radius: 0.6rem;
-    border: 1px solid var(--accent-dark);
-    background: var(--accent-dark);
-    color: #fff;
+    border: 1px solid #2f6b00;
+    background: #2f6b00;
+    color: #f8fdef;
     font: inherit;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 600;
     cursor: pointer;
+  }
+  .share-story-share:active {
+    background: #1f4d00;
+    border-color: #1f4d00;
   }
   .share-story-share:disabled {
     opacity: 0.6;
     cursor: default;
   }
   .share-story-hint {
-    margin: 0.85rem 0 0;
-    font-size: 0.78rem;
+    flex: 0 0 auto;
+    margin: 0.7rem 0 0;
+    font-size: 0.75rem;
     line-height: 1.4;
     color: rgb(var(--gray));
   }
   .share-story-status {
-    margin: 0.5rem 0 0;
+    flex: 0 0 auto;
+    margin: 0.4rem 0 0;
     min-height: 1em;
-    font-size: 0.8rem;
-    color: var(--accent-dark);
+    font-size: 0.78rem;
+    color: #2f6b00;
   }
   .share-story-copy {
+    flex: 0 0 auto;
     display: block;
-    margin: 0.4rem auto 0;
+    margin: 0.35rem auto 0;
     padding: 0.25rem;
     border: 0;
     background: none;
     font: inherit;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     text-decoration: underline;
     text-underline-offset: 2px;
     color: rgb(var(--gray));
     cursor: pointer;
+  }
+
+  @media (max-width: 480px) {
+    .share-story-dialog {
+      position: fixed;
+      inset: auto 0 0 0;
+      width: 100%;
+      max-width: 100%;
+      max-height: min(85dvh, 640px);
+      margin: 0;
+      border-radius: 1.25rem 1.25rem 0 0;
+      padding-bottom: calc(1.1rem + env(safe-area-inset-bottom));
+    }
   }
 </style>
