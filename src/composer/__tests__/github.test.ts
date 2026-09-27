@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Draft } from "../db";
-import { DEFAULTS, effectiveTitle, loadSettings, publish, saveSettings, toMarkdown, unpublish } from "../github";
+import { DEFAULTS, effectiveTitle, fetchPost, listRemotePosts, loadSettings, publish, saveSettings, toMarkdown, unpublish } from "../github";
 
 const draft = (over: Partial<Draft> = {}): Draft => ({
   id: "abc123",
@@ -66,6 +66,10 @@ describe("toMarkdown", () => {
   it("adds updatedDate for already-published posts", () => {
     expect(toMarkdown(draft({ pubDate: "2026-01-01", published: true }))).toContain("updatedDate:");
   });
+  it("keeps description and other unknown frontmatter fields", () => {
+    const md = toMarkdown(draft({ pubDate: "2026-01-01", extra: { description: "d", heroImage: "../img.jpg" } }));
+    expect(md).toBe(`---\ntitle: "Traffic makes me think."\ndescription: "d"\npubDate: "2026-01-01"\nheroImage: "../img.jpg"\n---\n\nTraffic makes me think.\n\nMore text.\n`);
+  });
 });
 
 describe("settings", () => {
@@ -129,5 +133,65 @@ describe("unpublish", () => {
     const out = await unpublish(settings, draft({ slug: "2026-01-01-old", published: true, pending: "unpublish" }));
     expect(commits[0].fileChanges.deletions).toEqual([{ path: "src/content/blog/2026-01-01-old.md" }]);
     expect(out).toMatchObject({ published: false, pending: undefined, slug: "2026-01-01-old" });
+  });
+});
+
+describe("listRemotePosts", () => {
+  it("lists markdown files in the blog directory, ignoring subdirectories", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          data: {
+            repository: {
+              object: {
+                entries: [
+                  { name: "2026-01-01-old.md", type: "blob" },
+                  { name: "assets", type: "tree" },
+                  { name: "2026-02-02-new.mdx", type: "blob" },
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(await listRemotePosts(settings)).toEqual([{ slug: "2026-01-01-old" }, { slug: "2026-02-02-new" }]);
+  });
+
+  it("returns nothing if the directory can't be read", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: null } } })));
+    expect(await listRemotePosts(settings)).toEqual([]);
+  });
+});
+
+describe("fetchPost", () => {
+  const stubBlob = (text: string) =>
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: { text } } } })));
+
+  it("parses a hand-written post, keeping description as extra and dropping stale updatedDate", async () => {
+    stubBlob(
+      `---\ntitle: 'Journaling Books'\ndescription: 'sets to the journey'\npubDate: 'Nov 05 2025'\nupdatedDate: 'Nov 06 2025'\n---\n\nBody text here.\n`,
+    );
+    const d = await fetchPost(settings, "summarizing-books");
+    expect(d).toMatchObject({
+      title: "Journaling Books",
+      text: "Body text here.",
+      pubDate: "Nov 05 2025",
+      published: true,
+      slug: "summarizing-books",
+      extra: { description: "sets to the journey" },
+    });
+  });
+
+  it("throws when the post doesn't exist", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: null } } })));
+    await expect(fetchPost(settings, "missing")).rejects.toThrow(/wasn't found/);
+  });
+
+  it("round-trips through toMarkdown without losing the description (updatedDate is refreshed, as for any edit)", async () => {
+    stubBlob(`---\ntitle: "Hi"\ndescription: "d"\npubDate: "2026-01-01"\n---\n\nBody\n`);
+    const d = await fetchPost(settings, "hi");
+    expect(toMarkdown(d)).toBe(`---\ntitle: "Hi"\ndescription: "d"\npubDate: "2026-01-01"\nupdatedDate: "2026-09-27T10:00:00.000Z"\n---\n\nBody\n`);
   });
 });

@@ -11,11 +11,24 @@ const publishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({
   pending: undefined,
 }));
 const unpublishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({ ...d, published: false, pending: undefined }));
+const listRemotePostsMock = vi.fn(async () => [] as { slug: string }[]);
+const fetchPostMock = vi.fn(async (_s: unknown, slug: string): Promise<Draft> => ({
+  id: `remote-${slug}`,
+  title: slug,
+  text: `content of ${slug}`,
+  created: 0,
+  updated: 0,
+  slug,
+  pubDate: "2026-01-01",
+  published: true,
+}));
 
 vi.mock("../github", async (orig) => ({
   ...(await orig<typeof import("../github")>()),
   publish: (...a: [unknown, Draft]) => publishMock(...a),
   unpublish: (...a: [unknown, Draft]) => unpublishMock(...a),
+  listRemotePosts: (...a: [unknown]) => listRemotePostsMock(...a),
+  fetchPost: (...a: [unknown, string]) => fetchPostMock(...a),
 }));
 
 const authMock = vi.hoisted(() => ({
@@ -67,6 +80,9 @@ beforeEach(async () => {
   });
   publishMock.mockClear();
   unpublishMock.mockClear();
+  listRemotePostsMock.mockClear();
+  listRemotePostsMock.mockResolvedValue([]);
+  fetchPostMock.mockClear();
   online(true);
   await tick(30); // let the previous test's in-flight writes land before wiping
   const { listDrafts, deleteDraft } = await import("../db");
@@ -198,6 +214,42 @@ describe("drafts and settings views", () => {
     $<HTMLButtonElement>(".row").click();
     await tick(20);
     expect($<HTMLTextAreaElement>("#body").value).toBe("content a");
+  });
+
+  it("merges in remote-only posts and opens one, caching it locally", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    listRemotePostsMock.mockResolvedValue([{ slug: "hand-written-post" }]);
+    const db = await boot("#/drafts");
+    await tick(20);
+    const row = $<HTMLButtonElement>('.row[data-remote="hand-written-post"]');
+    expect(row.textContent).toMatch(/hand-written-post.*published/s);
+    row.click();
+    await tick(20);
+    expect(fetchPostMock).toHaveBeenCalledWith(expect.anything(), "hand-written-post");
+    expect($<HTMLTextAreaElement>("#body").value).toBe("content of hand-written-post");
+    expect((await db.listDrafts())[0]).toMatchObject({ slug: "hand-written-post", published: true });
+  });
+
+  it("doesn't duplicate a remote post that's already tracked locally", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    listRemotePostsMock.mockResolvedValue([{ slug: "s" }]);
+    const db = await boot();
+    await db.saveDraft({ id: "b", title: "Newer", text: "b", created: 2, updated: 2, published: true, slug: "s" });
+    await boot("#/drafts");
+    await tick(20);
+    expect(document.querySelectorAll(".row")).toHaveLength(1);
+  });
+
+  it("deletes a remote-only post after a long-press and confirmation", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    listRemotePostsMock.mockResolvedValue([{ slug: "hand-written-post" }]);
+    await boot("#/drafts");
+    await tick(20);
+    vi.stubGlobal("confirm", () => true);
+    $<HTMLButtonElement>('.row[data-remote="hand-written-post"]').dispatchEvent(new Event("touchstart"));
+    await tick(750);
+    expect(fetchPostMock).toHaveBeenCalledWith(expect.anything(), "hand-written-post");
+    expect(unpublishMock).toHaveBeenCalledTimes(1);
   });
 
   it("shows whether a token is saved, and when", async () => {

@@ -39,6 +39,17 @@ export const AUTH = { clientId: "<Client ID>", proxy: "<Worker URL>" };
 
 Commit and push. Open `/write/` → Settings → **Sign in with GitHub**.
 
+## Editing or deleting existing posts
+
+The Drafts list (☰) shows local drafts plus every post currently published in the repo —
+including ones written by hand or published from another device. Tap one to load its
+content into the editor (Update/Unpublish then work as usual); long-press to delete it
+straight from the repo without opening it.
+
+This means two devices editing the *same* post around the same time will race — whichever
+publishes last wins, same as any two people pushing to the same branch. Fine for a
+single-author blog; just don't run two composer tabs on the same post at once.
+
 ## Security notes
 
 - The token is limited to the repo the App is installed on, with Contents only.

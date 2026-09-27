@@ -1,4 +1,4 @@
-import type { Draft } from "./db";
+import { type Draft, newId } from "./db";
 
 export interface Settings {
   token: string;
@@ -41,9 +41,43 @@ export function effectiveTitle(d: Draft): string {
 }
 
 export function toMarkdown(d: Draft): string {
-  const fm = [`title: ${JSON.stringify(effectiveTitle(d))}`, `pubDate: ${JSON.stringify(d.pubDate)}`];
+  const fm = [`title: ${JSON.stringify(effectiveTitle(d))}`];
+  if (d.extra?.description !== undefined) fm.push(`description: ${JSON.stringify(d.extra.description)}`);
+  fm.push(`pubDate: ${JSON.stringify(d.pubDate)}`);
   if (d.published) fm.push(`updatedDate: ${JSON.stringify(new Date().toISOString())}`);
+  for (const [k, v] of Object.entries(d.extra ?? {})) {
+    if (k === "description") continue; // already emitted, right after title
+    fm.push(`${k}: ${JSON.stringify(v)}`);
+  }
   return `---\n${fm.join("\n")}\n---\n\n${d.text.trim()}\n`;
+}
+
+const unquote = (raw: string): string => {
+  const s = raw.trim();
+  if (s.length >= 2 && ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'")))) {
+    const inner = s.slice(1, -1);
+    return s[0] === '"' ? inner.replace(/\\(.)/g, "$1") : inner.replace(/''/g, "'");
+  }
+  return s;
+};
+
+/** Parses the small YAML subset used by composer-written and hand-written posts alike. */
+function parseFrontmatter(raw: string): { title: string; pubDate?: string; extra: Record<string, string>; text: string } {
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return { title: "", extra: {}, text: raw.trim() };
+  let title = "";
+  let pubDate: string | undefined;
+  const extra: Record<string, string> = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z][\w-]*):\s*(.*)$/);
+    if (!kv) continue;
+    const value = unquote(kv[2]);
+    if (kv[1] === "title") title = value;
+    else if (kv[1] === "pubDate") pubDate = value;
+    else if (kv[1] === "updatedDate") continue; // regenerated whenever the composer re-saves
+    else extra[kv[1]] = value;
+  }
+  return { title, pubDate, extra, text: m[2].trim() };
 }
 
 const b64 = (s: string) => {
@@ -130,6 +164,37 @@ export async function unpublish(s: Settings, d: Draft): Promise<Draft> {
 }
 
 export const postUrl = (slug: string) => `/blog/${slug}/`;
+
+/** Lists every published post's slug straight from the repo, so posts published on other devices show up too. */
+export async function listRemotePosts(s: Settings): Promise<{ slug: string }[]> {
+  const [owner, name] = s.repo.split("/");
+  const data = await gql<{ repository: { object: { entries?: { name: string; type: string }[] } | null } }>(
+    s,
+    `query($owner:String!,$name:String!,$expr:String!){
+      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Tree { entries { name type } } } }
+    }`,
+    { owner, name, expr: `${s.branch}:${DIR}` },
+  );
+  const entries = data.repository.object?.entries ?? [];
+  return entries.filter((e) => e.type === "blob" && /\.mdx?$/.test(e.name)).map((e) => ({ slug: e.name.replace(/\.mdx?$/, "") }));
+}
+
+/** Reads a published post's file and turns it back into a Draft, so it can be opened, edited, or deleted. */
+export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
+  const [owner, name] = s.repo.split("/");
+  const data = await gql<{ repository: { object: { text?: string } | null } }>(
+    s,
+    `query($owner:String!,$name:String!,$expr:String!){
+      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Blob { text } } }
+    }`,
+    { owner, name, expr: `${s.branch}:${pathFor(slug)}` },
+  );
+  const raw = data.repository.object?.text;
+  if (raw === undefined) throw new Error(`"${slug}" wasn't found in the repo.`);
+  const { title, pubDate, extra, text } = parseFrontmatter(raw);
+  const now = Date.now();
+  return { id: newId(), title, text, created: now, updated: now, slug, pubDate, published: true, extra };
+}
 
 /** Verifies the saved token can read the repo branch. Resolves to an error message, or null if OK. */
 export async function checkToken(s: Settings): Promise<string | null> {

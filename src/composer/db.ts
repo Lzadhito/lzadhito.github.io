@@ -10,6 +10,8 @@ export interface Draft {
   published?: boolean;
   /** Queued repo action, drained by sync() when online. */
   pending?: "publish" | "unpublish";
+  /** Frontmatter fields the composer doesn't edit (e.g. description, heroImage), kept so re-saving doesn't drop them. */
+  extra?: Record<string, string>;
 }
 
 const STORE = "drafts";

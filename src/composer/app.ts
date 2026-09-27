@@ -1,7 +1,17 @@
 import { AUTH } from "./config";
 import { authEnabled, pollForToken, requestDeviceCode } from "./auth";
 import { type Draft, deleteDraft, getDraft, listDrafts, newId, saveDraft } from "./db";
-import { checkToken, effectiveTitle, loadSettings, postUrl, publish, saveSettings, unpublish } from "./github";
+import {
+  checkToken,
+  effectiveTitle,
+  fetchPost,
+  listRemotePosts,
+  loadSettings,
+  postUrl,
+  publish,
+  saveSettings,
+  unpublish,
+} from "./github";
 
 const app = document.getElementById("app")!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -193,31 +203,89 @@ function editor() {
     };
 }
 
+function rowHtml(local: Draft[], remoteSlugs: string[]): string {
+  if (!local.length && !remoteSlugs.length) return `<div class="msg">Nothing yet.</div>`;
+  const localRows = local.map(
+    (d) => `<button class="row" data-id="${d.id}">${esc(effectiveTitle(d))}
+      <small>${new Date(d.updated).toLocaleString()} · ${d.pending ? "queued" : d.published ? "published" : "draft"}</small></button>`,
+  );
+  const remoteRows = remoteSlugs.map(
+    (slug) => `<button class="row" data-remote="${esc(slug)}">${esc(slug)}<small>published</small></button>`,
+  );
+  return localRows.join("") + remoteRows.join("");
+}
+
 async function drafts() {
-  const list = await listDrafts();
+  const local = await listDrafts();
   app.innerHTML = `
     <header><button id="back">←</button><span class="grow"><b>Drafts</b></span><button id="settings">Settings</button></header>
-    <div class="list">
-      ${list.length ? "" : `<div class="msg">Nothing yet.</div>`}
-      ${list
-        .map(
-          (d) => `<button class="row" data-id="${d.id}">${esc(effectiveTitle(d))}
-            <small>${new Date(d.updated).toLocaleString()} · ${d.pending ? "queued" : d.published ? "published" : "draft"}</small></button>`,
-        )
-        .join("")}
-    </div>`;
+    <div class="list" id="list">${rowHtml(local, [])}</div>`;
   document.getElementById("back")!.onclick = () => (location.hash = "#/");
   document.getElementById("settings")!.onclick = () => (location.hash = "#/settings");
-  document.querySelectorAll<HTMLButtonElement>(".row").forEach((b) => {
+  wireDraftRows(local);
+
+  // Merge in posts published from other devices/browsers, so they can be opened, edited, or deleted here too.
+  const s = loadSettings();
+  if (!s.token || !navigator.onLine) return;
+  try {
+    const remote = await listRemotePosts(s);
+    const known = new Set(local.filter((d) => d.slug).map((d) => d.slug));
+    const remoteSlugs = remote.filter((r) => !known.has(r.slug)).sort((a, b) => (a.slug < b.slug ? 1 : -1));
+    if (!remoteSlugs.length || route() !== "drafts") return; // don't clobber if the user already navigated away
+    const listEl = document.getElementById("list");
+    if (listEl) listEl.innerHTML = rowHtml(local, remoteSlugs.map((r) => r.slug));
+    wireDraftRows(local);
+    wireRemoteRows(s);
+  } catch {
+    // Offline or the token can't reach the repo: the local list above still works, just skip the remote merge.
+  }
+}
+
+function wireDraftRows(local: Draft[]) {
+  document.querySelectorAll<HTMLButtonElement>(".row[data-id]").forEach((b) => {
     b.onclick = () => (location.hash = `#/d/${b.dataset.id}`);
     let held: number | undefined;
     b.ontouchstart = () => {
       held = window.setTimeout(async () => {
-        const d = list.find((x) => x.id === b.dataset.id)!;
+        const d = local.find((x) => x.id === b.dataset.id)!;
         if (d.published) return alert("Unpublish it first (open it, tap Unpublish).");
         if (confirm(`Delete "${effectiveTitle(d)}"?`)) {
           await deleteDraft(d.id);
           void drafts();
+        }
+      }, 700);
+    };
+    b.ontouchend = b.ontouchmove = () => clearTimeout(held);
+  });
+}
+
+function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
+  document.querySelectorAll<HTMLButtonElement>(".row[data-remote]").forEach((b) => {
+    const slug = b.dataset.remote!;
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const d = await fetchPost(s, slug);
+        await saveDraft(d);
+        location.hash = `#/d/${d.id}`;
+      } catch (e) {
+        alert(`Couldn't open "${slug}": ${(e as Error).message}`);
+        b.disabled = false;
+      }
+    };
+    let held: number | undefined;
+    b.ontouchstart = () => {
+      held = window.setTimeout(async () => {
+        if (!confirm(`Delete "${slug}"? It'll be removed from the site.`)) return;
+        b.disabled = true;
+        try {
+          const full = await fetchPost(s, slug);
+          const done = await unpublish(s, full);
+          await saveDraft(done);
+          void drafts();
+        } catch (e) {
+          alert(`Couldn't delete "${slug}": ${(e as Error).message}`);
+          b.disabled = false;
         }
       }, 700);
     };
