@@ -24,7 +24,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
   data-domain={domain}
   aria-haspopup="dialog"
 >
-  <span class="sr-only">Share this post to your Instagram story</span>
+  <span class="sr-only">Share this post</span>
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="19"
@@ -44,7 +44,7 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
 
 <dialog class="share-story-dialog">
   <div class="share-story-head">
-    <h2>Share to your story</h2>
+    <h2>Share</h2>
     <button type="button" class="share-story-close" aria-label="Close">✕</button>
   </div>
 
@@ -58,10 +58,10 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
       <button
         type="button"
         class="share-story-share"
-        data-label-share="Share to Instagram Story"
-        data-label-fallback="Save story image"
+        data-label-share="Share"
+        data-label-fallback="Save image"
       >
-        Share to Instagram Story
+        Share
       </button>
     </div>
 
@@ -121,6 +121,9 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
       } catch {
         loading.textContent = "Couldn't render a preview, but sharing still works.";
       }
+      // One tap on the trigger is the whole interaction — kick the share flow off
+      // right away instead of waiting for a second tap on the "Share" button below.
+      void runShare();
     }
 
     trigger.addEventListener("click", open);
@@ -144,8 +147,8 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     const canShareFiles = typeof nav.canShare === "function" && typeof File !== "undefined";
     const onIOS = detectIOS();
     shareBtn.textContent = canShareFiles
-      ? (shareBtn.dataset.labelShare ?? "Share to Instagram Story")
-      : (shareBtn.dataset.labelFallback ?? "Save story image");
+      ? (shareBtn.dataset.labelShare ?? "Share")
+      : (shareBtn.dataset.labelFallback ?? "Save image");
 
     async function copyLink(): Promise<boolean> {
       try {
@@ -160,8 +163,12 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     // composer (image + link both land on the clipboard as part of that attempt).
     // Everywhere else — and if that deep link doesn't land — fall back to the system
     // share sheet (Android reliably surfaces Instagram there) or a plain download,
-    // always with the link copied first.
-    shareBtn.addEventListener("click", async () => {
+    // always with the link copied first. Runs automatically as soon as the preview
+    // is ready (see `open()`); the "Share" button just re-runs it, e.g. to retry.
+    let sharing = false;
+    async function runShare() {
+      if (sharing) return;
+      sharing = true;
       shareBtn.disabled = true;
       setStatus("Preparing image…");
       try {
@@ -169,10 +176,9 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
 
         if (onIOS) {
           setStatus("Opening Instagram…");
-          const opened = await tryInstagramStoryDeepLink(blob, url);
-          if (opened) {
+          const openedDeepLink = await tryInstagramStoryDeepLink(blob, url);
+          if (openedDeepLink) {
             setStatus("Opening Instagram Story… the link is already on your clipboard to paste as a sticker.");
-            shareBtn.disabled = false;
             return;
           }
         }
@@ -187,12 +193,10 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
                 ? "Shared! Paste the copied link as a Link sticker in your story."
                 : `Shared! Add this link as a sticker: ${url}`,
             );
-            shareBtn.disabled = false;
             return;
           } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {
               setStatus(copied ? "Link copied." : "");
-              shareBtn.disabled = false;
               return;
             }
             // fall through to the download fallback below
@@ -206,8 +210,14 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
         );
       } catch {
         setStatus("Something went wrong preparing the share.");
+      } finally {
+        shareBtn.disabled = false;
+        sharing = false;
       }
-      shareBtn.disabled = false;
+    }
+
+    shareBtn.addEventListener("click", () => {
+      void runShare();
     });
 
     copyBtn.addEventListener("click", async () => {
@@ -239,9 +249,17 @@ const { title, description, body, date, url, siteName, domain } = Astro.props;
     box-shadow: var(--box-shadow);
     color: rgb(var(--gray-dark));
     background: #fff;
-    display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+  /* `display: flex` must only apply once the dialog is actually open (via
+     showModal()) — an unconditional `display` here is an author-stylesheet
+     rule, which always wins over the UA's `dialog:not([open]) { display: none }`
+     default regardless of specificity, so the sheet would otherwise render
+     inline in the page flow (and, under the mobile media query below, get
+     pinned open at the bottom of the screen) as soon as the page loads. */
+  .share-story-dialog[open] {
+    display: flex;
   }
   .share-story-dialog::backdrop {
     background: rgba(15, 18, 25, 0.55);
