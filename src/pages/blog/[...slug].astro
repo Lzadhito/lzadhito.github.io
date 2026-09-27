@@ -12,9 +12,13 @@ export async function getStaticPaths() {
 type Props = CollectionEntry<"blog">;
 
 const post = Astro.props;
-const { Content } = await render(post);
+// A protected post's body is a ciphertext blob (see src/lib/postCrypto.ts), not markdown —
+// rendering it through remark would just spit out the encrypted gibberish. BlogPost shows a
+// password prompt instead and decrypts it client-side.
+const isProtected = post.data.protected === true;
+const { Content } = isProtected ? { Content: null } : await render(post);
 ---
 
 <BlogPost slug={post.id} body={post.body} {...post.data}>
-  <Content />
+  {Content && <Content />}
 </BlogPost>

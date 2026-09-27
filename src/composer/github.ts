@@ -1,4 +1,5 @@
 import { type Draft, newId } from "./db";
+import { encryptBody } from "../lib/postCrypto";
 
 export interface Settings {
   token: string;
@@ -40,16 +41,20 @@ export function effectiveTitle(d: Draft): string {
   return first.length > 60 ? first.slice(0, 57).replace(/\s+\S*$/, "") + "…" : first || "Untitled";
 }
 
-export function toMarkdown(d: Draft): string {
+/** Builds the committed .md file. When `d.password` is set, the body is encrypted and the
+ * plaintext never appears in the output — see src/lib/postCrypto.ts. */
+export async function toMarkdown(d: Draft): Promise<string> {
   const fm = [`title: ${JSON.stringify(effectiveTitle(d))}`];
   if (d.extra?.description !== undefined) fm.push(`description: ${JSON.stringify(d.extra.description)}`);
   fm.push(`pubDate: ${JSON.stringify(d.pubDate)}`);
   if (d.published) fm.push(`updatedDate: ${JSON.stringify(new Date().toISOString())}`);
+  if (d.password) fm.push(`protected: true`);
   for (const [k, v] of Object.entries(d.extra ?? {})) {
-    if (k === "description") continue; // already emitted, right after title
+    if (k === "description" || k === "protected") continue; // description already emitted, right after title
     fm.push(`${k}: ${JSON.stringify(v)}`);
   }
-  return `---\n${fm.join("\n")}\n---\n\n${d.text.trim()}\n`;
+  const body = d.password ? await encryptBody(d.text.trim(), d.password) : d.text.trim();
+  return `---\n${fm.join("\n")}\n---\n\n${body}\n`;
 }
 
 const unquote = (raw: string): string => {
@@ -150,7 +155,7 @@ export async function publish(s: Settings, d: Draft): Promise<Draft> {
   }
   const { oid } = await head(s);
   await commit(s, `${d.published ? "Update" : "Publish"}: ${effectiveTitle(next)}`, oid, {
-    additions: [{ path: pathFor(next.slug!), contents: b64(toMarkdown(next)) }],
+    additions: [{ path: pathFor(next.slug!), contents: b64(await toMarkdown(next)) }],
   });
   next.published = true;
   next.pending = undefined;
@@ -179,7 +184,9 @@ export async function listRemotePosts(s: Settings): Promise<{ slug: string }[]> 
   return entries.filter((e) => e.type === "blob" && /\.mdx?$/.test(e.name)).map((e) => ({ slug: e.name.replace(/\.mdx?$/, "") }));
 }
 
-/** Reads a published post's file and turns it back into a Draft, so it can be opened, edited, or deleted. */
+/** Reads a published post's file and turns it back into a Draft, so it can be opened, edited, or deleted.
+ * If it's password protected, its body comes back ciphertext-only, in `locked` (`text` is empty) — the
+ * caller needs to decrypt it with the password before it's editable. See decryptBody() in postCrypto.ts. */
 export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
   const [owner, name] = s.repo.split("/");
   const data = await gql<{ repository: { object: { text?: string } | null } }>(
@@ -192,8 +199,21 @@ export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
   const raw = data.repository.object?.text;
   if (raw === undefined) throw new Error(`"${slug}" wasn't found in the repo.`);
   const { title, pubDate, extra, text } = parseFrontmatter(raw);
+  const isProtected = extra.protected === "true";
+  delete extra.protected;
   const now = Date.now();
-  return { id: newId(), title, text, created: now, updated: now, slug, pubDate, published: true, extra };
+  return {
+    id: newId(),
+    title,
+    text: isProtected ? "" : text,
+    locked: isProtected ? text : undefined,
+    created: now,
+    updated: now,
+    slug,
+    pubDate,
+    published: true,
+    extra,
+  };
 }
 
 /** Verifies the saved token can read the repo branch. Resolves to an error message, or null if OK. */

@@ -12,6 +12,10 @@ export interface Draft {
   pending?: "publish" | "unpublish";
   /** Frontmatter fields the composer doesn't edit (e.g. description, heroImage), kept so re-saving doesn't drop them. */
   extra?: Record<string, string>;
+  /** Plaintext password; stays on this device only (like the GitHub token). Set → the body is encrypted on publish. */
+  password?: string;
+  /** Ciphertext body of a protected post fetched from GitHub but not yet unlocked in this session. */
+  locked?: string;
 }
 
 const STORE = "drafts";

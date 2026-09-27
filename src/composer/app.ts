@@ -1,6 +1,7 @@
 import { AUTH } from "./config";
 import { authEnabled, pollForToken, requestDeviceCode } from "./auth";
 import { type Draft, deleteDraft, getDraft, listDrafts, newId, saveDraft } from "./db";
+import { decryptBody } from "../lib/postCrypto";
 import {
   checkToken,
   effectiveTitle,
@@ -119,18 +120,25 @@ async function render() {
   editor();
 }
 
+/** Publish button label: "Update"/"Publish", with a lock shown whenever a password is set. */
+const publishLabel = (d: Draft | null) => `${d?.password ? "🔒 " : ""}${d?.published ? "Update" : "Publish"}`;
+
 function editor() {
   const d = current;
   const settings = loadSettings();
   const canPublish = !!d?.text.trim();
+  // Captured before any edits, so we can tell "still has its original password" apart from
+  // "password field was just cleared" when Publish is clicked.
+  const hadPassword = !!d?.password;
   app.innerHTML = `
     <header>
       <button id="menu" aria-label="Drafts">☰</button>
       <span class="grow status ${statusClass}" id="status">${esc(status || (d?.published ? "Published" : d ? "Saved" : ""))}</span>
       <button id="new">New</button>
-      <button id="publish" class="primary" ${canPublish ? "" : "disabled"}>${d?.published ? "Update" : "Publish"}</button>
+      <button id="publish" class="primary" ${canPublish ? "" : "disabled"}>${publishLabel(d)}</button>
     </header>
     <input class="title" id="title" placeholder="Title (optional)" value="${esc(d?.title ?? "")}" />
+    <input class="password" id="password" type="password" autocomplete="off" placeholder="Password (optional) — locks this post" value="${esc(d?.password ?? "")}" />
     <textarea id="body" placeholder="Start typing or dictate…" autofocus>${esc(d?.text ?? "")}</textarea>
     <footer class="bar">
       ${["**", "_", "> ", "- ", "[]()"].map((t) => `<button data-ins="${esc(t)}">${esc(t.trim() || t)}</button>`).join("")}
@@ -140,6 +148,7 @@ function editor() {
   `;
   const body = document.getElementById("body") as HTMLTextAreaElement;
   const title = document.getElementById("title") as HTMLInputElement;
+  const password = document.getElementById("password") as HTMLInputElement;
   const publishBtn = document.getElementById("publish") as HTMLButtonElement;
 
   const ensure = () => {
@@ -148,7 +157,7 @@ function editor() {
   };
   const changed = () => {
     publishBtn.disabled = !body.value.trim();
-    if (current?.published) publishBtn.textContent = "Update";
+    publishBtn.textContent = publishLabel(current);
     setStatus("Saved");
     touch();
   };
@@ -158,6 +167,10 @@ function editor() {
   };
   title.oninput = () => {
     ensure().title = title.value;
+    changed();
+  };
+  password.oninput = () => {
+    ensure().password = password.value;
     changed();
   };
 
@@ -186,6 +199,10 @@ function editor() {
     const d = ensure();
     d.text = body.value;
     d.title = title.value;
+    d.password = password.value;
+    if (d.published && hadPassword && !d.password) {
+      if (!confirm("Remove the password? The post will be public.")) return;
+    }
     d.pending = "publish";
     d.updated = Date.now();
     await saveDraft(d);
@@ -275,6 +292,18 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
       b.disabled = true;
       try {
         const d = await fetchPost(s, slug);
+        if (d.locked) {
+          const pw = prompt(`"${slug}" is password protected. Enter its password to edit it:`);
+          if (pw === null) return void (b.disabled = false); // cancelled
+          try {
+            d.text = await decryptBody(d.locked, pw);
+            d.password = pw;
+            d.locked = undefined;
+          } catch {
+            alert("Wrong password.");
+            return void (b.disabled = false);
+          }
+        }
         await saveDraft(d);
         location.hash = `#/d/${d.id}`;
       } catch (e) {

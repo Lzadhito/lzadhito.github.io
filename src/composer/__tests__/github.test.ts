@@ -57,18 +57,29 @@ describe("effectiveTitle", () => {
 });
 
 describe("toMarkdown", () => {
-  it("emits schema-valid frontmatter and body", () => {
-    const md = toMarkdown(draft({ title: 'Say "hi": ok', pubDate: "2026-09-27T10:00:00.000Z" }));
+  it("emits schema-valid frontmatter and body", async () => {
+    const md = await toMarkdown(draft({ title: 'Say "hi": ok', pubDate: "2026-09-27T10:00:00.000Z" }));
     expect(md).toBe(
       `---\ntitle: "Say \\"hi\\": ok"\npubDate: "2026-09-27T10:00:00.000Z"\n---\n\nTraffic makes me think.\n\nMore text.\n`,
     );
   });
-  it("adds updatedDate for already-published posts", () => {
-    expect(toMarkdown(draft({ pubDate: "2026-01-01", published: true }))).toContain("updatedDate:");
+  it("adds updatedDate for already-published posts", async () => {
+    expect(await toMarkdown(draft({ pubDate: "2026-01-01", published: true }))).toContain("updatedDate:");
   });
-  it("keeps description and other unknown frontmatter fields", () => {
-    const md = toMarkdown(draft({ pubDate: "2026-01-01", extra: { description: "d", heroImage: "../img.jpg" } }));
+  it("keeps description and other unknown frontmatter fields", async () => {
+    const md = await toMarkdown(draft({ pubDate: "2026-01-01", extra: { description: "d", heroImage: "../img.jpg" } }));
     expect(md).toBe(`---\ntitle: "Traffic makes me think."\ndescription: "d"\npubDate: "2026-01-01"\nheroImage: "../img.jpg"\n---\n\nTraffic makes me think.\n\nMore text.\n`);
+  });
+
+  it("encrypts the body and marks the post protected when a password is set", async () => {
+    const md = await toMarkdown(draft({ pubDate: "2026-01-01", password: "hunter2" }));
+    expect(md).toContain("protected: true");
+    const body = md.split("---\n\n")[1]; // title stays public; only the body is encrypted
+    expect(body).not.toContain("Traffic");
+    expect(body).not.toContain("More text");
+  });
+  it("leaves plain posts untouched when no password is set", async () => {
+    expect(await toMarkdown(draft({ pubDate: "2026-01-01" }))).not.toContain("protected:");
   });
 });
 
@@ -192,6 +203,13 @@ describe("fetchPost", () => {
   it("round-trips through toMarkdown without losing the description (updatedDate is refreshed, as for any edit)", async () => {
     stubBlob(`---\ntitle: "Hi"\ndescription: "d"\npubDate: "2026-01-01"\n---\n\nBody\n`);
     const d = await fetchPost(settings, "hi");
-    expect(toMarkdown(d)).toBe(`---\ntitle: "Hi"\ndescription: "d"\npubDate: "2026-01-01"\nupdatedDate: "2026-09-27T10:00:00.000Z"\n---\n\nBody\n`);
+    expect(await toMarkdown(d)).toBe(`---\ntitle: "Hi"\ndescription: "d"\npubDate: "2026-01-01"\nupdatedDate: "2026-09-27T10:00:00.000Z"\n---\n\nBody\n`);
+  });
+
+  it("returns a protected post locked, with no plaintext in `text`", async () => {
+    stubBlob(`---\ntitle: "Secret"\npubDate: "2026-01-01"\nprotected: true\n---\n\nv1.c2FsdA==.aXYxMjM0NTY3.Zm9v\n`);
+    const d = await fetchPost(settings, "secret");
+    expect(d).toMatchObject({ title: "Secret", text: "", locked: "v1.c2FsdA==.aXYxMjM0NTY3.Zm9v", published: true });
+    expect(d.extra).not.toHaveProperty("protected");
   });
 });
