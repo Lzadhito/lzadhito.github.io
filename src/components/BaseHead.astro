@@ -4,7 +4,7 @@
 import '../styles/global.css';
 import type { ImageMetadata } from 'astro';
 import FallbackImage from '../assets/blog-placeholder-1.jpg';
-import { SITE_TITLE } from '../consts';
+import { CF_ANALYTICS_TOKEN, SITE_TITLE } from '../consts';
 
 interface Props {
 	title: string;
@@ -55,3 +55,14 @@ const { title, description, image = FallbackImage } = Astro.props;
 <meta property="twitter:title" content={title} />
 <meta property="twitter:description" content={description} />
 <meta property="twitter:image" content={new URL(image.src, Astro.url)} />
+
+<!-- Cloudflare Web Analytics -->
+{
+	CF_ANALYTICS_TOKEN && (
+		<script
+			type="module"
+			src="https://static.cloudflareinsights.com/beacon.min.js"
+			data-cf-beacon={`{"token": "${CF_ANALYTICS_TOKEN}"}`}
+		/>
+	)
+}

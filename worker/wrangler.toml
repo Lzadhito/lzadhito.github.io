@@ -1,7 +1,12 @@
 name = "lzadhito-github-auth"
-main = "github-auth-proxy.js"
+main = "index.js"
 compatibility_date = "2026-01-01"
 
 [vars]
 ALLOWED_ORIGIN = "https://lzadhito.github.io"
 CLIENT_ID = "REPLACE_WITH_GITHUB_APP_CLIENT_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lzadhito-loves"
+database_id = "6d6b2446-94fa-49d0-940f-ccbb8dbbea7c"

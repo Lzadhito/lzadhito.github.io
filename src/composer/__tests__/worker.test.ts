@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error plain JS worker
-import worker from "../../../worker/github-auth-proxy.js";
+import worker from "../../../worker/index.js";
 
 const env = { ALLOWED_ORIGIN: "https://lzadhito.github.io", CLIENT_ID: "cid" };
 const req = (path: string, init: RequestInit & { origin?: string | null } = {}) =>

@@ -2,11 +2,16 @@
 import { Image } from "astro:assets";
 import type { CollectionEntry } from "astro:content";
 import FormattedDate from "../components/FormattedDate.astro";
+import LoveButton from "../components/LoveButton.astro";
+import ShareStory from "../components/ShareStory.astro";
+import { SITE_TITLE } from "../consts";
 import BaseLayout from "./BaseLayout.astro";
 
-type Props = CollectionEntry<"blog">["data"];
+type Props = CollectionEntry<"blog">["data"] & { slug: string; body?: string };
 
-const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+const { title, description, pubDate, updatedDate, heroImage, slug, body } = Astro.props;
+
+const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "numeric", year: "numeric" });
 ---
 
 <BaseLayout title={`lzadhito - ${title}`} description={description}>
@@ -14,17 +19,31 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
     <header class="post-header">
       <h1>{title}</h1>
       <div class="meta">
-        <FormattedDate date={pubDate} />
-        {
-          updatedDate && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>
-                updated <FormattedDate date={updatedDate} />
-              </span>
-            </>
-          )
-        }
+        <span class="meta-dates">
+          <FormattedDate date={pubDate} />
+          {
+            updatedDate && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  updated <FormattedDate date={updatedDate} />
+                </span>
+              </>
+            )
+          }
+        </span>
+        <span class="meta-actions">
+          <LoveButton slug={slug} />
+          <ShareStory
+            title={title}
+            description={description}
+            body={body}
+            date={shareDate}
+            url={Astro.url.href}
+            siteName={SITE_TITLE}
+            domain={Astro.url.host}
+          />
+        </span>
       </div>
       {description && <p class="lede">{description}</p>}
     </header>
@@ -73,10 +92,21 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
   }
   .post .meta {
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     margin-top: 0.75rem;
     font-size: 0.875rem;
     color: #6b7280;
+  }
+  .post .meta .meta-dates {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .post .meta .meta-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
   }
   .post .lede {
     margin: 1.25rem 0 0;

@@ -1,0 +1,317 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+  body?: string;
+  date: string;
+  url: string;
+  siteName: string;
+  domain: string;
+}
+
+const { title, description, body, date, url, siteName, domain } = Astro.props;
+---
+
+<button
+  type="button"
+  class="share-story-trigger inline-flex items-center justify-center w-9 h-9 rounded-full text-gray-500 hover:text-gray-800 hover:bg-black/5 transition-colors shrink-0"
+  data-title={title}
+  data-description={description ?? ""}
+  data-body={body ?? ""}
+  data-date={date}
+  data-url={url}
+  data-site-name={siteName}
+  data-domain={domain}
+  aria-haspopup="dialog"
+>
+  <span class="sr-only">Share this post to your Instagram story</span>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="19"
+    height="19"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path>
+    <path d="m21.854 2.147-10.94 10.939"></path>
+  </svg>
+</button>
+
+<dialog class="share-story-dialog">
+  <div class="share-story-head">
+    <h2>Share to your story</h2>
+    <button type="button" class="share-story-close" aria-label="Close">✕</button>
+  </div>
+
+  <div class="share-story-preview">
+    <canvas class="share-story-canvas" width="1080" height="1920"></canvas>
+    <p class="share-story-loading">Preparing your story card…</p>
+  </div>
+
+  <div class="share-story-actions">
+    <button
+      type="button"
+      class="share-story-share"
+      data-label-share="Share to Instagram Story"
+      data-label-fallback="Save story image"
+    >
+      Share to Instagram Story
+    </button>
+  </div>
+
+  <p class="share-story-hint">
+    Your post link is copied automatically. Instagram Stories can't follow a link baked into a photo, so once you're in the
+    story editor, add it as a <strong>Link sticker</strong>.
+  </p>
+  <p class="share-story-status" role="status" aria-live="polite"></p>
+  <button type="button" class="share-story-copy">Copy link again</button>
+</dialog>
+
+<script>
+  import { canvasToBlob, renderStoryCard, slugifyFilename } from "../scripts/storyCard";
+
+  const triggers = document.querySelectorAll<HTMLButtonElement>(".share-story-trigger");
+
+  for (const trigger of triggers) {
+    const dialog = trigger.nextElementSibling as HTMLDialogElement | null;
+    if (!dialog || dialog.tagName !== "DIALOG") continue;
+
+    const canvas = dialog.querySelector<HTMLCanvasElement>(".share-story-canvas")!;
+    const loading = dialog.querySelector<HTMLParagraphElement>(".share-story-loading")!;
+    const shareBtn = dialog.querySelector<HTMLButtonElement>(".share-story-share")!;
+    const copyBtn = dialog.querySelector<HTMLButtonElement>(".share-story-copy")!;
+    const closeBtn = dialog.querySelector<HTMLButtonElement>(".share-story-close")!;
+    const status = dialog.querySelector<HTMLParagraphElement>(".share-story-status")!;
+
+    const data = {
+      title: trigger.dataset.title ?? "",
+      description: trigger.dataset.description || undefined,
+      body: trigger.dataset.body || undefined,
+      date: trigger.dataset.date ?? "",
+      siteName: trigger.dataset.siteName ?? "",
+      domain: trigger.dataset.domain ?? "",
+    };
+    const url = trigger.dataset.url ?? "";
+    const filename = `${slugifyFilename(data.title)}-story.png`;
+
+    let blobPromise: Promise<Blob> | null = null;
+    let opened = false;
+
+    function setStatus(text: string) {
+      status.textContent = text;
+    }
+
+    async function open() {
+      dialog!.showModal();
+      if (opened) return;
+      opened = true;
+      try {
+        await renderStoryCard(canvas, data);
+        loading.style.display = "none";
+        canvas.classList.add("is-ready");
+        blobPromise = canvasToBlob(canvas);
+      } catch {
+        loading.textContent = "Couldn't render a preview, but sharing still works.";
+      }
+    }
+
+    trigger.addEventListener("click", open);
+    closeBtn.addEventListener("click", () => dialog!.close());
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) dialog!.close();
+    });
+
+    async function getBlob(): Promise<Blob> {
+      if (!blobPromise) {
+        await renderStoryCard(canvas, data);
+        blobPromise = canvasToBlob(canvas);
+      }
+      return blobPromise;
+    }
+
+    const nav = navigator as Navigator & {
+      canShare?: (data?: ShareData) => boolean;
+      share?: (data?: ShareData) => Promise<void>;
+    };
+    const canShareFiles = typeof nav.canShare === "function" && typeof File !== "undefined";
+    shareBtn.textContent = canShareFiles
+      ? (shareBtn.dataset.labelShare ?? "Share to Instagram Story")
+      : (shareBtn.dataset.labelFallback ?? "Save story image");
+
+    async function copyLink(): Promise<boolean> {
+      try {
+        await navigator.clipboard.writeText(url);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    // One tap: copy the link, then jump straight into sharing (or saving) the image —
+    // no separate "copy link" step required.
+    shareBtn.addEventListener("click", async () => {
+      shareBtn.disabled = true;
+      setStatus("Copying link…");
+      const copied = await copyLink();
+      setStatus(copied ? "Link copied. Preparing image…" : "Preparing image…");
+      try {
+        const blob = await getBlob();
+        const file = new File([blob], filename, { type: "image/png" });
+        if (canShareFiles && nav.canShare!({ files: [file] })) {
+          try {
+            await nav.share!({ files: [file], title: data.title, text: copied ? undefined : url });
+            setStatus(
+              copied
+                ? "Shared! Paste the copied link as a Link sticker in your story."
+                : `Shared! Add this link as a sticker: ${url}`,
+            );
+            shareBtn.disabled = false;
+            return;
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+              setStatus(copied ? "Link copied." : "");
+              shareBtn.disabled = false;
+              return;
+            }
+            // fall through to the download fallback below
+          }
+        }
+        downloadBlob(blob, filename);
+        setStatus(
+          copied
+            ? "Image saved & link copied. Open Instagram → new Story → pick this photo, then paste the link as a sticker."
+            : `Image saved. Open Instagram → new Story → pick this photo, then add this link as a sticker: ${url}`,
+        );
+      } catch {
+        setStatus(copied ? "Link copied, but the image failed to generate." : "Something went wrong generating the image.");
+      }
+      shareBtn.disabled = false;
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      setStatus((await copyLink()) ? "Link copied." : `Copy this link manually: ${url}`);
+    });
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+  }
+</script>
+
+<style>
+  .share-story-dialog {
+    width: min(360px, calc(100vw - 2rem));
+    padding: 1.25rem;
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: var(--box-shadow);
+    color: rgb(var(--gray-dark));
+  }
+  .share-story-dialog::backdrop {
+    background: rgba(15, 18, 25, 0.55);
+  }
+  .share-story-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  .share-story-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .share-story-close {
+    border: 0;
+    background: none;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.25rem;
+    cursor: pointer;
+    color: inherit;
+  }
+  .share-story-preview {
+    position: relative;
+    aspect-ratio: 1080 / 1920;
+    width: 100%;
+    max-height: 55vh;
+    margin: 0 auto;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: rgb(var(--gray-light));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .share-story-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .share-story-canvas.is-ready {
+    opacity: 1;
+  }
+  .share-story-loading {
+    position: absolute;
+    margin: 0;
+    font-size: 0.85rem;
+    color: rgb(var(--gray));
+  }
+  .share-story-actions {
+    margin-top: 1rem;
+  }
+  .share-story-share {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--accent-dark);
+    background: var(--accent-dark);
+    color: #fff;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .share-story-share:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .share-story-hint {
+    margin: 0.85rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: rgb(var(--gray));
+  }
+  .share-story-status {
+    margin: 0.5rem 0 0;
+    min-height: 1em;
+    font-size: 0.8rem;
+    color: var(--accent-dark);
+  }
+  .share-story-copy {
+    display: block;
+    margin: 0.4rem auto 0;
+    padding: 0.25rem;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 0.78rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    color: rgb(var(--gray));
+    cursor: pointer;
+  }
+</style>
