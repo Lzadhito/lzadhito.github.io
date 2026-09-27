@@ -2,7 +2,7 @@
 // composer hides "Sign in with GitHub" and falls back to pasting a token by hand.
 export const AUTH = {
   /** Client ID of the GitHub App (public, safe to commit). */
-  clientId: "",
-  /** URL of the deployed Cloudflare Worker (worker/github-auth-proxy.js), no trailing slash. */
-  proxy: "",
+  clientId: "Iv23li2pvkIKjJSwvJMG",
+  /** URL of the deployed Cloudflare Worker (worker/index.js), no trailing slash. */
+  proxy: "https://lzadhito-github-auth.adhitosalto.workers.dev",
 };

@@ -12,8 +12,9 @@ GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App*
 - Webhook: **untick Active**
 - Repository permissions → **Contents: Read and write**
 - Where can this app be installed: **Only on this account**
-- Create it, then on the app page:
-  - Tick **Enable Device Flow** (Optional features / General)
+- Create it, then on the app's **General** settings page, scroll to
+  **"Identifying and authorizing users"** (below the Callback URL field):
+  - Tick **Enable Device Flow**
   - Untick **Expire user authorization tokens** (otherwise the login lasts 8 hours)
   - Copy the **Client ID**
 - **Install App** (left menu) → your account → **Only select repositories** → `lzadhito.github.io`
