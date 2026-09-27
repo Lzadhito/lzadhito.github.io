@@ -193,6 +193,37 @@ describe("drafts and settings views", () => {
     expect($<HTMLTextAreaElement>("#body").value).toBe("content a");
   });
 
+  it("shows whether a token is saved, and when", async () => {
+    await boot("#/settings");
+    expect($("#tokenInfo").textContent).toMatch(/No token saved/);
+    $<HTMLInputElement>("#token").value = "abc";
+    $<HTMLButtonElement>("#save").click();
+    const saved = JSON.parse(localStorage.getItem("composer-settings")!);
+    expect(saved.tokenSavedAt).toBeGreaterThan(0);
+    await boot("#/settings");
+    expect($("#tokenInfo").textContent).toMatch(/Token saved on/);
+  });
+
+  it("keeps the original saved date when the token is unchanged", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "abc", tokenSavedAt: 1234 }));
+    await boot("#/settings");
+    $<HTMLButtonElement>("#save").click();
+    expect(JSON.parse(localStorage.getItem("composer-settings")!).tokenSavedAt).toBe(1234);
+  });
+
+  it("tests the token against GitHub", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "abc" }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+    await boot("#/settings");
+    $<HTMLButtonElement>("#check").click();
+    await tick(30);
+    expect($("#tokenInfo").textContent).toMatch(/Token check failed: Token rejected/);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { ref: { target: { oid: "h" } } } } })));
+    $<HTMLButtonElement>("#check").click();
+    await tick(30);
+    expect($("#tokenInfo").textContent).toMatch(/Token works/);
+  });
+
   it("saves settings to localStorage", async () => {
     await boot("#/settings");
     $<HTMLInputElement>("#token").value = "  secret  ";

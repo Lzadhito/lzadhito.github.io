@@ -1,5 +1,5 @@
 import { type Draft, deleteDraft, getDraft, listDrafts, newId, saveDraft } from "./db";
-import { effectiveTitle, loadSettings, postUrl, publish, saveSettings, unpublish } from "./github";
+import { checkToken, effectiveTitle, loadSettings, postUrl, publish, saveSettings, unpublish } from "./github";
 
 const app = document.getElementById("app")!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -223,6 +223,12 @@ async function drafts() {
   });
 }
 
+function tokenInfo(s: { token: string; tokenSavedAt?: number }) {
+  if (!s.token) return "No token saved. Publishing is disabled until you add one.";
+  const when = s.tokenSavedAt ? ` on ${new Date(s.tokenSavedAt).toLocaleDateString()}` : "";
+  return `Token saved${when}.`;
+}
+
 function settingsView() {
   const s = loadSettings();
   app.innerHTML = `
@@ -230,15 +236,27 @@ function settingsView() {
     <div class="form">
       <label>GitHub fine-grained token (this repo only, Contents: read &amp; write)
         <input id="token" type="password" autocomplete="off" value="${esc(s.token)}" /></label>
+      <div class="msg" id="tokenInfo">${tokenInfo(s)}</div>
+      <button id="check">Test token</button>
       <label>Repository <input id="repo" value="${esc(s.repo)}" /></label>
       <label>Branch <input id="branch" value="${esc(s.branch)}" /></label>
       <button class="primary" id="save">Save</button>
       <div class="msg">The token is stored only in this browser. Delete drafts: long-press one in the list.</div>
     </div>`;
   document.getElementById("back")!.onclick = () => history.back();
+  document.getElementById("check")!.onclick = async () => {
+    const info = document.getElementById("tokenInfo")!;
+    const saved = loadSettings();
+    if (!saved.token) return void (info.textContent = "No token saved yet. Save one first.");
+    info.textContent = "Checking…";
+    const err = await checkToken(saved);
+    info.textContent = err ? `Token check failed: ${err}` : "Token works ✓";
+  };
   document.getElementById("save")!.onclick = () => {
+    const token = (document.getElementById("token") as HTMLInputElement).value.trim();
     saveSettings({
-      token: (document.getElementById("token") as HTMLInputElement).value.trim(),
+      tokenSavedAt: token === s.token ? s.tokenSavedAt : token ? Date.now() : undefined,
+      token,
       repo: (document.getElementById("repo") as HTMLInputElement).value.trim(),
       branch: (document.getElementById("branch") as HTMLInputElement).value.trim(),
     });

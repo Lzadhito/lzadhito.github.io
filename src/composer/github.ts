@@ -4,6 +4,8 @@ export interface Settings {
   token: string;
   repo: string; // owner/name
   branch: string;
+  /** When the current token was saved (ms since epoch); lets Settings show its age. */
+  tokenSavedAt?: number;
 }
 
 const KEY = "composer-settings";
@@ -128,3 +130,13 @@ export async function unpublish(s: Settings, d: Draft): Promise<Draft> {
 }
 
 export const postUrl = (slug: string) => `/blog/${slug}/`;
+
+/** Verifies the saved token can read the repo branch. Resolves to an error message, or null if OK. */
+export async function checkToken(s: Settings): Promise<string | null> {
+  try {
+    await head(s);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
