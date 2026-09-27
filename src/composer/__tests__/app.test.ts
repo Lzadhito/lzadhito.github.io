@@ -278,7 +278,7 @@ describe("drafts and settings views", () => {
     await boot("#/drafts");
     await tick(20);
     vi.stubGlobal("confirm", () => true);
-    $<HTMLButtonElement>('.row[data-remote="hand-written-post"]').dispatchEvent(new Event("touchstart"));
+    $<HTMLButtonElement>('.row[data-remote="hand-written-post"]').dispatchEvent(new Event("pointerdown"));
     await tick(750);
     expect(fetchPostMock).toHaveBeenCalledWith(expect.anything(), "hand-written-post");
     expect(unpublishMock).toHaveBeenCalledTimes(1);

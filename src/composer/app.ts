@@ -253,7 +253,8 @@ function wireDraftRows(local: Draft[]) {
   document.querySelectorAll<HTMLButtonElement>(".row[data-id]").forEach((b) => {
     b.onclick = () => (location.hash = `#/d/${b.dataset.id}`);
     let held: number | undefined;
-    b.ontouchstart = () => {
+    // Pointer events (not touch-only) so press-and-hold works with a mouse on desktop too.
+    b.onpointerdown = () => {
       held = window.setTimeout(async () => {
         const d = local.find((x) => x.id === b.dataset.id)!;
         if (d.published) return alert("Unpublish it first (open it, tap Unpublish).");
@@ -263,7 +264,7 @@ function wireDraftRows(local: Draft[]) {
         }
       }, 700);
     };
-    b.ontouchend = b.ontouchmove = () => clearTimeout(held);
+    b.onpointerup = b.onpointerleave = b.onpointercancel = () => clearTimeout(held);
   });
 }
 
@@ -282,7 +283,8 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
       }
     };
     let held: number | undefined;
-    b.ontouchstart = () => {
+    // Pointer events (not touch-only) so press-and-hold works with a mouse on desktop too.
+    b.onpointerdown = () => {
       held = window.setTimeout(async () => {
         if (!confirm(`Delete "${slug}"? It'll be removed from the site.`)) return;
         b.disabled = true;
@@ -297,7 +299,7 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
         }
       }, 700);
     };
-    b.ontouchend = b.ontouchmove = () => clearTimeout(held);
+    b.onpointerup = b.onpointerleave = b.onpointercancel = () => clearTimeout(held);
   });
 }
 
