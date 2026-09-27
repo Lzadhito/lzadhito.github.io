@@ -3,13 +3,15 @@ import { Image } from "astro:assets";
 import type { CollectionEntry } from "astro:content";
 import FormattedDate from "../components/FormattedDate.astro";
 import LoveButton from "../components/LoveButton.astro";
+import PasswordGate from "../components/PasswordGate.astro";
 import ShareStory from "../components/ShareStory.astro";
 import { SITE_TITLE } from "../consts";
 import BaseLayout from "./BaseLayout.astro";
 
 type Props = CollectionEntry<"blog">["data"] & { slug: string; body?: string };
 
-const { title, description, pubDate, updatedDate, heroImage, slug, body } = Astro.props;
+// `protected` is a reserved word, so it's aliased on destructure.
+const { title, description, pubDate, updatedDate, heroImage, slug, body, protected: isProtected } = Astro.props;
 
 const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "numeric", year: "numeric" });
 ---
@@ -37,7 +39,7 @@ const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "nu
           <ShareStory
             title={title}
             description={description}
-            body={body}
+            body={isProtected ? undefined : body}
             date={shareDate}
             url={Astro.url.href}
             siteName={SITE_TITLE}
@@ -53,7 +55,7 @@ const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "nu
       )
     }
     <div class="post-body">
-      <slot />
+      {isProtected ? <PasswordGate slug={slug} blob={body} /> : <slot />}
     </div>
     <footer class="post-footer">
       <a href="/blog">← All posts</a>

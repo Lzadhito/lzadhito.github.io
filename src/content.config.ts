@@ -13,6 +13,9 @@ const blog = defineCollection({
       pubDate: z.coerce.date(),
       updatedDate: z.coerce.date().optional(),
       heroImage: image().optional(),
+      // When true, the post's body is an encrypted blob (see src/lib/postCrypto.ts), not
+      // markdown — the title/description above stay public, only the body is locked.
+      protected: z.boolean().optional(),
     }),
 });
 
