@@ -215,6 +215,12 @@ function rowHtml(local: Draft[], remoteSlugs: string[]): string {
   return localRows.join("") + remoteRows.join("");
 }
 
+function setRemoteStatus(msg: string, cls = "") {
+  document.getElementById("remoteStatus")?.remove();
+  if (!msg) return;
+  document.querySelector("header")?.insertAdjacentHTML("afterend", `<div class="msg ${cls}" id="remoteStatus">${esc(msg)}</div>`);
+}
+
 async function drafts() {
   const local = await listDrafts();
   app.innerHTML = `
@@ -226,18 +232,20 @@ async function drafts() {
 
   // Merge in posts published from other devices/browsers, so they can be opened, edited, or deleted here too.
   const s = loadSettings();
-  if (!s.token || !navigator.onLine) return;
+  if (!s.token) return setRemoteStatus('Sign in under Settings to also see posts published from other devices.');
+  if (!navigator.onLine) return setRemoteStatus("Offline — showing drafts saved on this device only.");
   try {
     const remote = await listRemotePosts(s);
     const known = new Set(local.filter((d) => d.slug).map((d) => d.slug));
     const remoteSlugs = remote.filter((r) => !known.has(r.slug)).sort((a, b) => (a.slug < b.slug ? 1 : -1));
-    if (!remoteSlugs.length || route() !== "drafts") return; // don't clobber if the user already navigated away
+    if (route() !== "drafts") return; // don't clobber if the user already navigated away
+    if (!remoteSlugs.length) return;
     const listEl = document.getElementById("list");
     if (listEl) listEl.innerHTML = rowHtml(local, remoteSlugs.map((r) => r.slug));
     wireDraftRows(local);
     wireRemoteRows(s);
-  } catch {
-    // Offline or the token can't reach the repo: the local list above still works, just skip the remote merge.
+  } catch (e) {
+    setRemoteStatus(`Couldn't check GitHub for posts from other devices: ${(e as Error).message}`, "error");
   }
 }
 

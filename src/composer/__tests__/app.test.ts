@@ -230,6 +230,38 @@ describe("drafts and settings views", () => {
     expect((await db.listDrafts())[0]).toMatchObject({ slug: "hand-written-post", published: true });
   });
 
+  it("hints at signing in when no token is saved, instead of silently showing nothing", async () => {
+    await boot("#/drafts");
+    await tick(20);
+    expect($(".msg").textContent).toMatch(/Sign in under Settings/);
+    expect(listRemotePostsMock).not.toHaveBeenCalled();
+  });
+
+  it("says it's offline instead of silently skipping the remote merge", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    online(false);
+    await boot("#/drafts");
+    await tick(20);
+    expect($(".msg").textContent).toMatch(/Offline/);
+    expect(listRemotePostsMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the error instead of silently failing when GitHub can't be reached", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    listRemotePostsMock.mockRejectedValue(new Error("Token rejected"));
+    await boot("#/drafts");
+    await tick(20);
+    expect($(".msg.error").textContent).toMatch(/Couldn't check GitHub.*Token rejected/);
+  });
+
+  it("shows no status message once the remote merge succeeds", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    listRemotePostsMock.mockResolvedValue([]);
+    await boot("#/drafts");
+    await tick(20);
+    expect(document.getElementById("remoteStatus")).toBeNull();
+  });
+
   it("doesn't duplicate a remote post that's already tracked locally", async () => {
     localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
     listRemotePostsMock.mockResolvedValue([{ slug: "s" }]);
