@@ -1,7 +1,7 @@
 ---
 title: "Poor but Make Sense"
 pubDate: "2026-10-07T10:17:56.352Z"
-updatedDate: "2026-10-07T10:33:11.491Z"
+updatedDate: "2026-10-07T10:33:21.134Z"
 ---
 
 Boomers who can't retire, millennials who commit to decades of mortgage, gen z who owns nothing. All of them seems to be doing poor financial decisions, but it might be the most reasonable for each of them.
@@ -18,6 +18,6 @@ My underachieving and the motoric issue make me pick the cheapest when my parent
 
 Meanwhile, a person of mine were grow in a high economy and turns low at some point, she was surviving most of her youth. Her adulthood (where she had job, and husband with above decent income) spent with casual lifestyle while having good amount of holiday and two upper mid cars. While she retain her frugal details, she enjoy the rest of it with her family (ngl, her family enjoy it too), and always avoiding risks. Turns out, she pays it with unretireable position even though she already wants to and planned it everyday.
 
-If you think the second decision is wrong, then my story didn't articulate well the imagination of being on her foot. I also have another story of another of mine that seems always on the top financial level all the time, he is in conglomerate level. To make it short, he have a rule that if he believe in something then he will go all out on it. It works! so well! but not for the two profile I mentioned above. (FYI, he is the most pious compared to the people before, I mean real pious not the act like pious or pious for money thingy. Unrelated though, but I feel the needs to clear that here)
+If you think the second decision is wrong, then my story didn't articulate well the imagination of being on her foot. I also have another story of another of mine that seems always on the top financial level all the time, he is in conglomerate level. To make it short, he have a standard that if he believe in something then he will go all out on it. It works! so well! but not for the two profile I mentioned above. (FYI, he is the most pious compared to the people before, I mean real pious not the act like pious or pious for money thingy. Unrelated though, but I feel the needs to clear that here)
 
 This simple background check will actually help you to be more tolerable on people decision on their finances. I'm not talking if their decision matters to your financial. This just a guide on how to not give a monkey on other people financial.
