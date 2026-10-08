@@ -34,18 +34,6 @@ const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "nu
             )
           }
         </span>
-        <span class="meta-actions">
-          <LoveButton slug={slug} />
-          <ShareStory
-            title={title}
-            description={description}
-            body={isProtected ? undefined : body}
-            date={shareDate}
-            url={Astro.url.href}
-            siteName={SITE_TITLE}
-            domain={Astro.url.host}
-          />
-        </span>
       </div>
       {description && <p class="lede">{description}</p>}
     </header>
@@ -56,6 +44,18 @@ const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "nu
     }
     <div class="post-body">
       {isProtected ? <PasswordGate slug={slug} blob={body} /> : <slot />}
+    </div>
+    <div class="post-actions">
+      <LoveButton slug={slug} />
+      <ShareStory
+        title={title}
+        description={description}
+        body={isProtected ? undefined : body}
+        date={shareDate}
+        url={Astro.url.href}
+        siteName={SITE_TITLE}
+        domain={Astro.url.host}
+      />
     </div>
     <footer class="post-footer">
       <a href="/blog">← All posts</a>
@@ -105,10 +105,12 @@ const shareDate = pubDate.toLocaleDateString("en-us", { month: "short", day: "nu
     display: flex;
     gap: 0.5rem;
   }
-  .post .meta .meta-actions {
+  .post .post-actions {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.25rem;
+    margin-top: 2rem;
   }
   .post .lede {
     margin: 1.25rem 0 0;
