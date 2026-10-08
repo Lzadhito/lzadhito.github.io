@@ -319,15 +319,51 @@ describe("drafts and settings views", () => {
     authMock.requestDeviceCode.mockResolvedValue({
       device_code: "dc", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 5,
     });
-    authMock.pollForToken.mockResolvedValue("gho_new");
+    authMock.pollForToken.mockResolvedValue({ access_token: "gho_new", refresh_token: "ghr_new", expires_in: 28800 });
     await boot("#/settings");
     $<HTMLButtonElement>("#signin").click();
     await tick(50);
     expect(authMock.requestDeviceCode).toHaveBeenCalled();
     const saved = JSON.parse(localStorage.getItem("composer-settings")!);
-    expect(saved).toMatchObject({ token: "gho_new" });
+    expect(saved).toMatchObject({ token: "gho_new", refreshToken: "ghr_new" });
     expect(saved.tokenSavedAt).toBeGreaterThan(0);
+    expect(saved.expiresAt).toBeGreaterThan(Date.now() + 28000 * 1000);
     expect(location.hash).toBe("#/");
+  });
+
+  it("describes the token by kind: signed in (auto-renews), pasted, or none", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "a", refreshToken: "r", tokenSavedAt: 1234 }));
+    await boot("#/settings");
+    expect($("#tokenInfo").textContent).toMatch(/Signed in with GitHub on .*Renews itself automatically/);
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "a", tokenSavedAt: 1234 }));
+    await boot("#/settings");
+    expect($("#tokenInfo").textContent).toMatch(/Token saved on/);
+    localStorage.setItem("composer-settings", JSON.stringify({}));
+    await boot("#/settings");
+    expect($("#tokenInfo").textContent).toMatch(/No token saved/);
+  });
+
+  it("keeps the refresh fields when Settings is saved without touching the token", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "a", refreshToken: "r", expiresAt: 99 }));
+    await boot("#/settings");
+    // a background refresh rotates the tokens while the page is open
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "b", refreshToken: "r2", expiresAt: 100 }));
+    $<HTMLInputElement>("#branch").value = "dev";
+    $<HTMLButtonElement>("#save").click();
+    expect(JSON.parse(localStorage.getItem("composer-settings")!)).toMatchObject({
+      token: "b", refreshToken: "r2", expiresAt: 100, branch: "dev",
+    });
+  });
+
+  it("drops the refresh fields when the token is replaced by hand", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "a", refreshToken: "r", expiresAt: 99 }));
+    await boot("#/settings");
+    $<HTMLInputElement>("#token").value = "pasted";
+    $<HTMLButtonElement>("#save").click();
+    const saved = JSON.parse(localStorage.getItem("composer-settings")!);
+    expect(saved.token).toBe("pasted");
+    expect(saved.refreshToken).toBeUndefined();
+    expect(saved.expiresAt).toBeUndefined();
   });
 
   it("shows the code while waiting, and errors if sign-in fails", async () => {

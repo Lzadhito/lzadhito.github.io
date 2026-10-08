@@ -91,6 +91,130 @@ describe("settings", () => {
   });
 });
 
+describe("token refresh", () => {
+  const MIN = 60_000;
+  const signedIn = (over: Partial<typeof settings> = {}) => ({
+    ...DEFAULTS,
+    token: "old",
+    refreshToken: "r1",
+    expiresAt: Date.now() + 60 * MIN,
+    ...over,
+  });
+  const NEW = { access_token: "new", refresh_token: "r2", expires_in: 28800 };
+
+  /** Fake GitHub + proxy. GraphQL only accepts `validToken`; `refresh` answers each /refresh call in order. */
+  function mockApi(opts: { validToken?: string; refresh?: unknown[] } = {}) {
+    const refresh = [...(opts.refresh ?? [])];
+    const log = { refreshCalls: 0, bearers: [] as string[], storedRefreshAtUse: [] as (string | undefined)[] };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: any) => {
+        if (url.endsWith("/refresh")) {
+          log.refreshCalls++;
+          await Promise.resolve(); // genuinely async, so concurrent callers overlap
+          const r = refresh.shift();
+          if (r instanceof Error) throw r;
+          return Response.json(r);
+        }
+        const bearer = init.headers.Authorization.replace("Bearer ", "");
+        log.bearers.push(bearer);
+        log.storedRefreshAtUse.push(loadSettings().refreshToken);
+        if (bearer !== opts.validToken) return new Response("{}", { status: 401 });
+        return Response.json({ data: { repository: { object: { entries: [] } } } });
+      }),
+    );
+    return log;
+  }
+
+  it("round-trips the refresh fields and still loads older settings without them", () => {
+    saveSettings({ ...DEFAULTS, token: "t", refreshToken: "r", expiresAt: 123 });
+    expect(loadSettings()).toMatchObject({ refreshToken: "r", expiresAt: 123 });
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    expect(loadSettings().refreshToken).toBeUndefined();
+  });
+
+  it("refreshes first when the token is about to expire, and saves the new pair", async () => {
+    const s = signedIn({ expiresAt: Date.now() + 2 * MIN });
+    saveSettings(s);
+    const log = mockApi({ validToken: "new", refresh: [NEW] });
+    await listRemotePosts(s);
+    expect(log.refreshCalls).toBe(1);
+    expect(log.bearers).toEqual(["new"]);
+    expect(loadSettings()).toMatchObject({ token: "new", refreshToken: "r2", expiresAt: Date.now() + 28800 * 1000 });
+  });
+
+  it("does not refresh a token that is still fresh", async () => {
+    const s = signedIn();
+    saveSettings(s);
+    const log = mockApi({ validToken: "old" });
+    await listRemotePosts(s);
+    expect(log.refreshCalls).toBe(0);
+  });
+
+  it("refreshes and retries once on a 401, with the rotated refresh token already saved", async () => {
+    const s = signedIn();
+    saveSettings(s);
+    const log = mockApi({ validToken: "new", refresh: [NEW] });
+    await listRemotePosts(s);
+    expect(log.bearers).toEqual(["old", "new"]);
+    expect(log.refreshCalls).toBe(1);
+    expect(log.storedRefreshAtUse[1]).toBe("r2"); // persisted before the retry was sent
+  });
+
+  it("stops after one refresh if the retry is also rejected", async () => {
+    const s = signedIn();
+    saveSettings(s);
+    const log = mockApi({ validToken: "never", refresh: [NEW, NEW] });
+    await expect(listRemotePosts(s)).rejects.toThrow(/Token rejected/);
+    expect(log.refreshCalls).toBe(1);
+    expect(log.bearers).toHaveLength(2);
+  });
+
+  it("never refreshes a pasted token", async () => {
+    const s = { ...DEFAULTS, token: "pasted" };
+    saveSettings(s);
+    const log = mockApi({ validToken: "other" });
+    await expect(listRemotePosts(s)).rejects.toThrow(/Token rejected/);
+    expect(log.refreshCalls).toBe(0);
+  });
+
+  it("shares one refresh between concurrent requests", async () => {
+    const s = signedIn({ expiresAt: Date.now() + MIN });
+    saveSettings(s);
+    const log = mockApi({ validToken: "new", refresh: [NEW] });
+    await Promise.all([listRemotePosts(s), listRemotePosts(s)]);
+    expect(log.refreshCalls).toBe(1);
+    expect(log.bearers).toEqual(["new", "new"]);
+  });
+
+  it("uses tokens another tab already saved instead of spending a rotated-away refresh token", async () => {
+    const stale = signedIn({ expiresAt: Date.now() + MIN });
+    saveSettings({ ...stale, token: "fromOtherTab", refreshToken: "r9" });
+    const log = mockApi({ validToken: "fromOtherTab" });
+    await listRemotePosts(stale);
+    expect(log.refreshCalls).toBe(0);
+    expect(log.bearers).toEqual(["fromOtherTab"]);
+  });
+
+  it("signs out (keeping everything else) when GitHub rejects the refresh token", async () => {
+    const s = signedIn({ expiresAt: Date.now() + MIN });
+    saveSettings(s);
+    mockApi({ refresh: [{ error: "bad_refresh_token" }] });
+    await expect(listRemotePosts(s)).rejects.toThrow(/Sign in again/);
+    expect(loadSettings()).toMatchObject({ token: "", repo: s.repo, branch: s.branch });
+    expect(loadSettings().refreshToken).toBeUndefined();
+    expect(loadSettings().expiresAt).toBeUndefined();
+  });
+
+  it("keeps the credential when the refresh fails for network reasons", async () => {
+    const s = signedIn({ expiresAt: Date.now() + MIN });
+    saveSettings(s);
+    mockApi({ refresh: [new TypeError("Failed to fetch")] });
+    await expect(listRemotePosts(s)).rejects.toThrow("Failed to fetch");
+    expect(loadSettings()).toMatchObject({ token: "old", refreshToken: "r1" });
+  });
+});
+
 describe("publish", () => {
   it("commits a new post file with a dated slug", async () => {
     const { commits } = mockGithub();

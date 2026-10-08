@@ -31,6 +31,43 @@ describe("github-auth-proxy worker", () => {
     await worker.fetch(req("/access_token"), env);
     expect(f).toHaveBeenCalledWith("https://github.com/login/oauth/access_token", expect.anything());
   });
+  describe("/refresh", () => {
+    const refreshReq = (body: unknown, origin?: string) =>
+      req("/refresh", { body: JSON.stringify(body), origin });
+    const secretEnv = { ...env, CLIENT_SECRET: "shh" };
+
+    it("attaches the client secret and forwards only the fixed refresh-grant fields", async () => {
+      const f = vi.fn(async () => Response.json({ access_token: "new", refresh_token: "r2" }));
+      vi.stubGlobal("fetch", f);
+      const res = await worker.fetch(
+        refreshReq({ client_id: "cid", refresh_token: "r1", grant_type: "evil", client_secret: "mine", extra: 1 }),
+        secretEnv,
+      );
+      expect(await res.json()).toEqual({ access_token: "new", refresh_token: "r2" });
+      const [url, init] = f.mock.calls[0] as unknown as [string, { body: string }];
+      expect(url).toBe("https://github.com/login/oauth/access_token");
+      expect(JSON.parse(init.body)).toEqual({
+        client_id: "cid",
+        client_secret: "shh",
+        grant_type: "refresh_token",
+        refresh_token: "r1",
+      });
+    });
+    it("rejects a wrong client id or origin without calling GitHub", async () => {
+      const f = vi.fn();
+      vi.stubGlobal("fetch", f);
+      expect((await worker.fetch(refreshReq({ client_id: "other", refresh_token: "r" }), secretEnv)).status).toBe(403);
+      expect((await worker.fetch(refreshReq({ client_id: "cid", refresh_token: "r" }, "https://evil.test"), secretEnv)).status).toBe(403);
+      expect(f).not.toHaveBeenCalled();
+    });
+    it("requires a refresh token and a configured secret", async () => {
+      const f = vi.fn();
+      vi.stubGlobal("fetch", f);
+      expect((await worker.fetch(refreshReq({ client_id: "cid" }), secretEnv)).status).toBe(400);
+      expect((await worker.fetch(refreshReq({ client_id: "cid", refresh_token: "r" }), env)).status).toBe(500);
+      expect(f).not.toHaveBeenCalled();
+    });
+  });
   it("rejects other origins, other client ids and unknown paths", async () => {
     const f = vi.fn();
     vi.stubGlobal("fetch", f);

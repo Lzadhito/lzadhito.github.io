@@ -56,7 +56,8 @@ async function sync() {
       else setStatus("Unpublished");
     }
   } catch (e) {
-    setStatus(`Sync failed: ${(e as Error).message}. Will retry.`);
+    // A failed refresh clears the token: nothing will retry until the author signs in again.
+    setStatus(loadSettings().token ? `Sync failed: ${(e as Error).message}. Will retry.` : (e as Error).message);
   } finally {
     syncing = false;
   }
@@ -332,10 +333,10 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
   });
 }
 
-function tokenInfo(s: { token: string; tokenSavedAt?: number }) {
+function tokenInfo(s: { token: string; tokenSavedAt?: number; refreshToken?: string }) {
   if (!s.token) return "No token saved. Publishing is disabled until you add one.";
   const when = s.tokenSavedAt ? ` on ${new Date(s.tokenSavedAt).toLocaleDateString()}` : "";
-  return `Token saved${when}.`;
+  return s.refreshToken ? `Signed in with GitHub${when}. Renews itself automatically.` : `Token saved${when}.`;
 }
 
 function settingsView() {
@@ -374,8 +375,15 @@ function settingsView() {
           window.open(code.verification_uri, "_blank");
         };
         document.getElementById("cancelGh")!.onclick = () => abort.abort();
-        const token = await pollForToken(AUTH, code, { signal: abort.signal });
-        saveSettings({ ...loadSettings(), token, tokenSavedAt: Date.now() });
+        const set = await pollForToken(AUTH, code, { signal: abort.signal });
+        const now = Date.now();
+        saveSettings({
+          ...loadSettings(),
+          token: set.access_token,
+          refreshToken: set.refresh_token,
+          expiresAt: set.expires_in ? now + set.expires_in * 1000 : undefined,
+          tokenSavedAt: now,
+        });
         location.hash = "#/";
         void sync();
       } catch (e) {
@@ -393,12 +401,16 @@ function settingsView() {
   };
   document.getElementById("save")!.onclick = () => {
     const token = (document.getElementById("token") as HTMLInputElement).value.trim();
-    saveSettings({
-      tokenSavedAt: token === s.token ? s.tokenSavedAt : token ? Date.now() : undefined,
-      token,
-      repo: (document.getElementById("repo") as HTMLInputElement).value.trim(),
-      branch: (document.getElementById("branch") as HTMLInputElement).value.trim(),
-    });
+    const repo = (document.getElementById("repo") as HTMLInputElement).value.trim();
+    const branch = (document.getElementById("branch") as HTMLInputElement).value.trim();
+    // Build on what's stored *now*, not on `s`: a background refresh may have rotated the tokens since this
+    // page rendered. Only a hand-edited token is a new (pasted) credential, so only then drop the refresh fields.
+    const cur = loadSettings();
+    saveSettings(
+      token === s.token
+        ? { ...cur, repo, branch }
+        : { ...cur, repo, branch, token, refreshToken: undefined, expiresAt: undefined, tokenSavedAt: token ? Date.now() : undefined },
+    );
     location.hash = "#/";
     void sync();
   };

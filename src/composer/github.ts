@@ -1,5 +1,7 @@
 import { type Draft, newId } from "./db";
 import { encryptBody } from "../lib/postCrypto";
+import { refreshAccessToken, SignedOutError } from "./auth";
+import { AUTH } from "./config";
 
 export interface Settings {
   token: string;
@@ -7,6 +9,10 @@ export interface Settings {
   branch: string;
   /** When the current token was saved (ms since epoch); lets Settings show its age. */
   tokenSavedAt?: number;
+  /** Only present after "Sign in with GitHub" with expiring tokens on; pasted tokens never have these. */
+  refreshToken?: string;
+  /** When `token` expires (ms since epoch). */
+  expiresAt?: number;
 }
 
 const KEY = "composer-settings";
@@ -92,12 +98,56 @@ const b64 = (s: string) => {
   return btoa(bin);
 };
 
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+let refreshing: Promise<string> | null = null;
+
+/**
+ * Swaps an expired/rejected access token for a fresh one and returns it. Refresh tokens are
+ * single-use, so: one refresh at a time per page, the new pair is saved before anyone uses it,
+ * and if storage already holds a different refresh token (another tab rotated it, or `stale` is
+ * just an old snapshot) we adopt that instead of spending the dead one.
+ */
+function refreshToken(stale: Settings): Promise<string> {
+  refreshing ??= (async () => {
+    const saved = loadSettings();
+    if (saved.refreshToken !== stale.refreshToken) return saved.token;
+    try {
+      const set = await refreshAccessToken(AUTH, stale.refreshToken!);
+      const now = Date.now();
+      saveSettings({
+        ...saved,
+        token: set.access_token,
+        refreshToken: set.refresh_token,
+        expiresAt: set.expires_in ? now + set.expires_in * 1000 : undefined,
+        tokenSavedAt: now,
+      });
+      return set.access_token;
+    } catch (e) {
+      if (e instanceof SignedOutError) {
+        saveSettings({ ...saved, token: "", refreshToken: undefined, expiresAt: undefined, tokenSavedAt: undefined });
+        throw new Error("Signed out. Sign in again in Settings.");
+      }
+      throw e; // network / 5xx: keep the credential, sync() will retry
+    }
+  })().finally(() => (refreshing = null));
+  return refreshing;
+}
+
 async function gql<T>(s: Settings, query: string, variables: Record<string, unknown>): Promise<T> {
-  const res = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
+  const send = (token: string) =>
+    fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    });
+  let token = s.token;
+  let refreshed = false;
+  if (s.refreshToken && s.expiresAt && s.expiresAt - Date.now() < REFRESH_MARGIN_MS) {
+    token = await refreshToken(s);
+    refreshed = true;
+  }
+  let res = await send(token);
+  if (res.status === 401 && s.refreshToken && !refreshed) res = await send(await refreshToken(s));
   if (res.status === 401) throw new Error("Token rejected (expired or wrong). Check Settings.");
   const json = await res.json();
   if (json.errors?.length) throw new Error(json.errors[0].message);

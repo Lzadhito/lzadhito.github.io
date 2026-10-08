@@ -2,6 +2,8 @@ name = "lzadhito-github-auth"
 main = "index.js"
 compatibility_date = "2026-01-01"
 
+# CLIENT_SECRET (the GitHub App's client secret, used only by /refresh) is a secret:
+# set it with `npx wrangler secret put CLIENT_SECRET`, never in this file.
 [vars]
 ALLOWED_ORIGIN = "https://lzadhito.github.io"
 CLIENT_ID = "Iv23li2pvkIKjJSwvJMG"

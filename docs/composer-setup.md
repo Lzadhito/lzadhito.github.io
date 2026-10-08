@@ -15,8 +15,11 @@ GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App*
 - Create it, then on the app's **General** settings page, scroll to
   **"Identifying and authorizing users"** (below the Callback URL field):
   - Tick **Enable Device Flow**
-  - Untick **Expire user authorization tokens** (otherwise the login lasts 8 hours)
+  - Leave **Expire user authorization tokens** ticked: the access token then lasts 8 hours and
+    the composer renews it silently (see step 2). Untick it only if you'd rather have one
+    never-expiring token and skip the client secret.
   - Copy the **Client ID**
+  - Click **Generate a new client secret** and copy it (only needed for the silent renewal)
 - **Install App** (left menu) → your account → **Only select repositories** → `lzadhito.github.io`
 
 ## 2. Deploy the proxy Worker (free Cloudflare account)
@@ -24,8 +27,13 @@ GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App*
 ```sh
 cd worker
 # set CLIENT_ID in wrangler.toml to the Client ID from step 1
+npx wrangler secret put CLIENT_SECRET   # paste the client secret from step 1
 npx wrangler deploy
 ```
+
+The secret lives only in Cloudflare, never in the repo. Without it, sign-in still works but the
+composer can't renew the token: after 8 hours publishing fails with "Login service error (500)"
+until you sign in again in Settings.
 
 Copy the printed `https://lzadhito-github-auth.<you>.workers.dev` URL.
 
@@ -53,6 +61,10 @@ single-author blog; just don't run two composer tabs on the same post at once.
 ## Security notes
 
 - The token is limited to the repo the App is installed on, with Contents only.
-- The Worker holds no secrets, forwards two fixed GitHub endpoints, and accepts only your
-  origin and your Client ID.
+- The access token expires after 8 hours and is renewed automatically, so a leaked one is short-lived.
+  The renewal token is single-use and rotates; if you sign in on two devices, whichever renews second
+  may be signed out and just needs to sign in again.
+- The Worker forwards fixed GitHub endpoints and accepts only your origin and your Client ID. Its one
+  secret, the client secret, is used only by `/refresh` and is never sent to the browser.
+- A token you paste by hand is never renewed.
 - Revoke any time: GitHub → Settings → Applications → Authorized GitHub Apps.
