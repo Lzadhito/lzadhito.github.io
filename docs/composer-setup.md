@@ -49,9 +49,9 @@ Commit and push. Open `/write/` → Settings → **Sign in with GitHub**.
 
 ## Editing or deleting existing posts
 
-The Drafts list (☰) shows local drafts plus every post currently published in the repo —
+The Drafts list (tap ← in the editor) shows local drafts plus every post currently published in the repo —
 including ones written by hand or published from another device. Tap one to load its
-content into the editor (Update/Unpublish then work as usual); long-press to delete it
+content into the editor (Update, and Unpublish in the ⋯ menu, then work as usual); long-press to delete it
 straight from the repo without opening it.
 
 This means two devices editing the *same* post around the same time will race — whichever

@@ -66,12 +66,22 @@ async function boot(hash = "") {
   return db;
 }
 
+// jsdom has no <dialog> modal API; mimic just the open/close state.
+HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+  this.removeAttribute("open");
+};
+const menuItems = () => [...document.querySelectorAll("#sheet .item")].map((e) => e.textContent);
+
 const type = (el: HTMLTextAreaElement | HTMLInputElement, v: string) => {
   el.value = v;
   el.dispatchEvent(new Event("input"));
 };
 
 beforeEach(async () => {
+  window.dispatchEvent(new Event("pagehide")); // the previous instance's pending autosave must not re-create a draft after the wipe below
   const store = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (k: string) => store.get(k) ?? null,
@@ -129,6 +139,126 @@ describe("editor", () => {
     await boot("#/d/x");
     expect($<HTMLTextAreaElement>("#body").value).toBe("</textarea><script>");
     expect(document.querySelector("script")).toBeNull();
+  });
+});
+
+describe("editor actions", () => {
+  it("shows only back, status, menu and the primary button in the header", async () => {
+    await boot();
+    const ids = [...document.querySelectorAll("header [id]")].map((e) => e.id);
+    expect(ids).toEqual(["back", "status", "menu", "publish"]);
+    expect(document.querySelectorAll("header button.primary")).toHaveLength(1);
+  });
+
+  it("back saves typing and goes to the drafts list without asking", async () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmSpy);
+    const db = await boot();
+    type($("#body"), "typed just now");
+    $<HTMLButtonElement>("#back").click();
+    await tick(50);
+    expect(location.hash).toBe("#/drafts");
+    expect(document.body.textContent).toContain("Drafts");
+    expect((await db.listDrafts())[0].text).toBe("typed just now");
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows a View link only for published posts", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "t", text: "b", created: 1, updated: 1 });
+    await db.saveDraft({ id: "b", title: "t", text: "b", created: 1, updated: 1, slug: "my-slug", published: true });
+    await boot("#/d/a");
+    expect(document.getElementById("view")).toBeNull();
+    await boot("#/d/b");
+    expect($<HTMLAnchorElement>("#view").getAttribute("href")).toMatch(/my-slug/);
+  });
+
+  it("lists the right menu items for a draft and for a published post, and closes on a backdrop tap", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "t", text: "b", created: 1, updated: 1 });
+    await db.saveDraft({ id: "b", title: "t", text: "b", created: 1, updated: 1, slug: "s", published: true });
+    await boot("#/d/a");
+    $<HTMLButtonElement>("#menu").click();
+    expect($("#sheet").hasAttribute("open")).toBe(true);
+    expect(menuItems()).toEqual(["New draft", "Set password", "Delete"]);
+    $("#sheet").click(); // target is the dialog itself = backdrop
+    expect($("#sheet").hasAttribute("open")).toBe(false);
+    await boot("#/d/b");
+    expect(menuItems()).toEqual(["View post", "New draft", "Set password", "Unpublish"]);
+  });
+
+  it("sets a password from the menu and marks the Publish button with a lock", async () => {
+    await boot();
+    type($("#body"), "secret");
+    expect($("#pwRow").hidden).toBe(true);
+    $<HTMLButtonElement>("#setpw").click();
+    expect($("#pwRow").hidden).toBe(false);
+    type($("#password"), "pw");
+    expect($("#publish").textContent).toMatch(/🔒/);
+  });
+
+  it("deletes a draft at once and brings it back with Undo", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "keep me", text: "body", password: "pw", created: 1, updated: 1 });
+    await boot("#/d/a");
+    $<HTMLButtonElement>("#delete").click();
+    await tick(50);
+    expect(await db.getDraft("a")).toBeUndefined();
+    expect(location.hash).toBe("#/drafts");
+    $<HTMLButtonElement>("#toast button").click();
+    await tick(50);
+    expect(await db.getDraft("a")).toMatchObject({ title: "keep me", text: "body", password: "pw" });
+    expect(document.getElementById("toast")).toBeNull();
+  });
+
+  it("keeps a deleted draft deleted once the Undo toast expires", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "t", text: "body", created: 1, updated: 1 });
+    await boot("#/d/a");
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      $<HTMLButtonElement>("#delete").click();
+      await vi.advanceTimersByTimeAsync(5100);
+      expect(document.getElementById("toast")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await db.getDraft("a")).toBeUndefined();
+  });
+
+  it("does not resurrect a deleted draft via the pending autosave", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "t", text: "body", created: 1, updated: 1 });
+    await boot("#/d/a");
+    type($("#body"), "edited"); // autosave now pending
+    $<HTMLButtonElement>("#delete").click();
+    await tick(500);
+    expect(await db.getDraft("a")).toBeUndefined();
+  });
+
+  it("offers Delete only after an unpublish completes", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    const db = await boot();
+    await db.saveDraft({ id: "p", title: "t", text: "body", created: 1, updated: 1, slug: "s", pubDate: "d", published: true });
+    await boot("#/d/p");
+    expect(menuItems()).not.toContain("Delete");
+    vi.stubGlobal("confirm", () => true);
+    $<HTMLButtonElement>("#unpub").click();
+    await tick(50);
+    expect(menuItems()).toContain("Delete");
+    expect(menuItems()).not.toContain("Unpublish");
+  });
+
+  it("does not unpublish when the confirmation is declined", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    const db = await boot();
+    await db.saveDraft({ id: "p", title: "t", text: "body", created: 1, updated: 1, slug: "s", pubDate: "d", published: true });
+    await boot("#/d/p");
+    vi.stubGlobal("confirm", () => false);
+    $<HTMLButtonElement>("#unpub").click();
+    await tick(50);
+    expect(unpublishMock).not.toHaveBeenCalled();
+    expect((await db.getDraft("p"))?.published).toBe(true);
   });
 });
 

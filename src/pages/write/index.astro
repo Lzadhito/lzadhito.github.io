@@ -25,16 +25,19 @@
       html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
       #app { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
       header, footer.bar { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-bottom: 1px solid var(--rule); }
-      footer.bar { border-bottom: 0; border-top: 1px solid var(--rule); padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); overflow-x: auto; }
+      footer.bar { border-bottom: 0; border-top: 1px solid var(--rule); padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
+      footer.bar button { flex: 1; padding-inline: 0; }
+      [hidden] { display: none !important; }
       header .grow { flex: 1; min-width: 0; }
       button { font: inherit; padding: .5rem .8rem; border-radius: .5rem; border: 1px solid var(--rule); background: transparent; color: var(--fg); min-height: 44px; }
       button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+      button.icon { min-width: 44px; padding-inline: 0; font-size: 1.25rem; border-color: transparent; }
       button.danger { color: #c0392b; }
+      a.viewlink { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .5rem; color: var(--accent); font-size: .85rem; font-weight: 600; text-decoration: none; }
       button:disabled { opacity: .5; }
       input, textarea { font: inherit; color: var(--fg); background: transparent; border: 0; outline: 0; width: 100%; }
       input.title { font-weight: 600; font-size: 1.1rem; padding: .6rem .9rem; border-bottom: 1px solid var(--rule); }
-      input.password { font-size: .85rem; padding: .5rem .9rem; border-bottom: 1px solid var(--rule); color: var(--muted); }
-      input.password:focus { color: var(--fg); }
+      input.password { font-size: 1rem; padding: .6rem; margin: 0 0 .5rem; border: 1px solid var(--rule); border-radius: .5rem; }
       textarea#body { flex: 1; resize: none; padding: .9rem; font-size: 1.15rem; line-height: 1.6; }
       .status { font-size: .8rem; color: var(--muted); white-space: nowrap; }
       .status.live { color: var(--accent); }
@@ -44,6 +47,13 @@
       .form { padding: .9rem; display: flex; flex-direction: column; gap: .8rem; overflow: auto; }
       .form label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; color: var(--muted); }
       .form input { border: 1px solid var(--rule); border-radius: .5rem; padding: .6rem; color: var(--fg); }
+      dialog#sheet { margin: auto 0 0; width: 100%; max-width: none; padding: 0; border: 0; background: transparent; color: var(--fg); }
+      dialog#sheet::backdrop { background: rgb(0 0 0 / .45); }
+      .sheet { background: var(--bg); border-radius: 1rem 1rem 0 0; padding: .5rem .75rem calc(.75rem + env(safe-area-inset-bottom)); }
+      .item { display: flex; align-items: center; width: 100%; min-height: 48px; padding: 0 .5rem; border: 0; border-radius: .5rem; color: inherit; text-decoration: none; text-align: left; }
+      .danger-zone { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
+      #toast { position: fixed; left: .75rem; right: .75rem; bottom: calc(1rem + env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem .25rem .25rem 1rem; border-radius: .75rem; background: var(--fg); color: var(--bg); }
+      #toast button { color: inherit; font-weight: 600; text-decoration: underline; border: 0; }
       .msg { padding: .5rem .9rem; font-size: .85rem; color: var(--muted); }
       .msg.error { color: #c0392b; }
     </style>

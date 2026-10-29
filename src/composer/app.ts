@@ -47,11 +47,15 @@ async function sync() {
       if (!d.pending) continue;
       setStatus(d.pending === "publish" ? "Publishing…" : "Unpublishing…");
       const done = d.pending === "publish" ? await publish(s, d) : await unpublish(s, d);
-      // Keep edits typed while the request was in flight.
+      // Keep edits typed while the request was in flight (including ones the autosave debounce hasn't written yet).
+      if (current?.id === d.id) await saveDraft(current);
       const latest = (await getDraft(d.id)) ?? done;
       const merged = { ...latest, slug: done.slug, pubDate: done.pubDate, published: done.published, pending: undefined };
       await saveDraft(merged);
-      if (current?.id === d.id) current = merged;
+      if (current?.id === d.id) {
+        current = merged;
+        if (!["drafts", "settings"].includes(route())) editor(); // refresh View link, Update label and menu items
+      }
       if (d.pending === "publish") watchLive(merged);
       else setStatus("Unpublished");
     }
@@ -99,6 +103,30 @@ function touch() {
   timer = window.setTimeout(flush, 250);
 }
 
+// ---------- toast ----------
+
+/** Short-lived message with one action. Lives on <body> so view re-renders don't wipe it. */
+function toast(msg: string, action: string, onAction: () => void) {
+  document.getElementById("toast")?.remove();
+  const el = document.createElement("div");
+  el.id = "toast";
+  el.innerHTML = `<span>${esc(msg)}</span><button>${esc(action)}</button>`;
+  el.querySelector("button")!.onclick = () => {
+    el.remove();
+    onAction();
+  };
+  document.body.append(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// iOS keeps 100dvh when the keyboard opens; size the app to what is actually visible so the format bar sits above it.
+const vv = window.visualViewport;
+if (vv) {
+  const fit = () => (app.style.height = `${vv.height}px`);
+  vv.addEventListener("resize", fit);
+  fit();
+}
+
 // ---------- views ----------
 
 const route = () => location.hash.replace(/^#\/?/, "");
@@ -131,21 +159,35 @@ function editor() {
   // Captured before any edits, so we can tell "still has its original password" apart from
   // "password field was just cleared" when Publish is clicked.
   const hadPassword = !!d?.password;
+  const published = !!d?.published;
   app.innerHTML = `
     <header>
-      <button id="menu" aria-label="Drafts">☰</button>
-      <span class="grow status ${statusClass}" id="status">${esc(status || (d?.published ? "Published" : d ? "Saved" : ""))}</span>
-      <button id="new">New</button>
+      <button id="back" class="icon" aria-label="Back to drafts">←</button>
+      <span class="grow">
+        <span class="status ${statusClass}" id="status">${esc(status || (published ? "Published" : d ? "Saved" : ""))}</span>
+        ${published ? `<a id="view" class="viewlink" href="${postUrl(d!.slug!)}" target="_blank" rel="noopener">View ↗</a>` : ""}
+      </span>
+      <button id="menu" class="icon" aria-label="More actions">⋯</button>
       <button id="publish" class="primary" ${canPublish ? "" : "disabled"}>${publishLabel(d)}</button>
     </header>
     <input class="title" id="title" placeholder="Title (optional)" value="${esc(d?.title ?? "")}" />
-    <input class="password" id="password" type="password" autocomplete="off" placeholder="Password (optional) — locks this post" value="${esc(d?.password ?? "")}" />
     <textarea id="body" placeholder="Start typing or dictate…" autofocus>${esc(d?.text ?? "")}</textarea>
     <footer class="bar">
       ${["**", "_", "> ", "- ", "[]()"].map((t) => `<button data-ins="${esc(t)}">${esc(t.trim() || t)}</button>`).join("")}
-      ${d?.published ? `<button id="unpub" class="danger">Unpublish</button><a href="${postUrl(d.slug!)}" target="_blank" class="status">View</a>` : ""}
     </footer>
     ${settings.token ? "" : `<div class="msg">Add your GitHub token in <a href="#/settings">Settings</a> to publish.</div>`}
+    <dialog id="sheet">
+      <div class="sheet">
+        ${published ? `<a class="item" id="viewPost" href="${postUrl(d!.slug!)}" target="_blank" rel="noopener">View post</a>` : ""}
+        <button class="item" id="new">New draft</button>
+        <button class="item" id="setpw">Set password</button>
+        <div id="pwRow" ${d?.password ? "" : "hidden"}>
+          <input class="password" id="password" type="password" autocomplete="off" placeholder="Password — locks this post" value="${esc(d?.password ?? "")}" />
+        </div>
+        ${published ? `<div class="danger-zone"><button class="item danger" id="unpub">Unpublish</button></div>` : ""}
+        ${d && !published ? `<div class="danger-zone"><button class="item danger" id="delete">Delete</button></div>` : ""}
+      </div>
+    </dialog>
   `;
   const body = document.getElementById("body") as HTMLTextAreaElement;
   const title = document.getElementById("title") as HTMLInputElement;
@@ -189,13 +231,36 @@ function editor() {
     };
   });
 
-  document.getElementById("menu")!.onclick = () => (location.hash = "#/drafts");
+  const sheet = document.getElementById("sheet") as HTMLDialogElement;
+  document.getElementById("back")!.onclick = () => (location.hash = "#/drafts"); // render() flushes pending typing first
+  document.getElementById("menu")!.onclick = () => sheet.showModal();
+  sheet.onclick = (e) => {
+    if (e.target === sheet) sheet.close(); // a tap on the backdrop lands on the dialog itself
+  };
+  sheet.querySelectorAll<HTMLElement>(".item:not(#setpw)").forEach((el) => el.addEventListener("click", () => sheet.close()));
+  document.getElementById("setpw")!.onclick = () => {
+    document.getElementById("pwRow")!.hidden = false;
+    password.focus();
+  };
   document.getElementById("new")!.onclick = () => {
     flush();
     current = null;
     location.hash = "#/new";
     if (route() === "new") void render();
   };
+  const del = document.getElementById("delete");
+  if (del)
+    del.onclick = async () => {
+      const gone = current!;
+      clearTimeout(timer); // a pending autosave must not bring it back
+      current = null;
+      await deleteDraft(gone.id);
+      location.hash = "#/drafts";
+      toast(`Deleted "${effectiveTitle(gone)}"`, "Undo", async () => {
+        await saveDraft(gone);
+        if (route() === "drafts") void drafts();
+      });
+    };
   publishBtn.onclick = async () => {
     const d = ensure();
     d.text = body.value;
