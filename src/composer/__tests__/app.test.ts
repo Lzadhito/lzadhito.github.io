@@ -11,7 +11,7 @@ const publishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({
   pending: undefined,
 }));
 const unpublishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({ ...d, published: false, pending: undefined }));
-type RP = { slug: string; title: string; pubDate?: string; oid: string };
+type RP = { slug: string; title: string; pubDate?: string; oid: string; protected?: boolean };
 const rp = (slug: string, over: Partial<RP> = {}): RP => ({ slug, title: slug, oid: `oid-${slug}`, ...over });
 const listRemotePostsMock = vi.fn(async () => [] as RP[]);
 const fetchPostMock = vi.fn(async (_s: unknown, slug: string): Promise<Draft> => ({
@@ -738,5 +738,154 @@ describe("update notice", () => {
     visible();
     await tick(30);
     expect(document.getElementById("update")).toBeNull();
+  });
+});
+
+describe("locked posts", () => {
+  const signedIn = () => localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+  const lockedPost = async (password = "right"): Promise<Draft> => {
+    const { encryptBody } = await import("../../lib/postCrypto");
+    return {
+      id: "remote-secret", title: "Secret", text: "", locked: await encryptBody("the real text", password), created: 0, updated: 0,
+      slug: "2026-01-01-secret", pubDate: "2026-01-01", published: true, extra: { description: "d" }, baseOid: "v3",
+    };
+  };
+  const openLockedFromList = async (password?: string) => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("2026-01-01-secret", { title: "Secret", protected: true })]);
+    const locked = await lockedPost(password);
+    fetchPostMock.mockResolvedValue(locked);
+    const db = await boot("#/drafts");
+    await tick(20);
+    $<HTMLButtonElement>('.row[data-remote="2026-01-01-secret"]').click();
+    await tick(20);
+    return db;
+  };
+  const submitPassword = async (pw: string) => {
+    type($<HTMLInputElement>("#unlockPw"), pw);
+    $<HTMLButtonElement>("#unlockGo").click();
+    await tick(600); // PBKDF2 at 300k iterations
+  };
+  const writeItAgain = async () => {
+    const db = await openLockedFromList();
+    $<HTMLButtonElement>("#forgot").click();
+    $<HTMLButtonElement>("#rewrite").click();
+    await tick(30);
+    return db;
+  };
+
+  it("marks protected remote posts with a lock", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("a", { title: "Open one" }), rp("b", { title: "Locked one", protected: true })]);
+    await boot("#/drafts");
+    await tick(20);
+    expect($('.row[data-remote="b"]').textContent).toMatch(/🔒 Locked one/);
+    expect($('.row[data-remote="a"]').textContent).not.toMatch(/🔒/);
+  });
+
+  it("keeps the sheet open with an inline error on a wrong password, then opens the post on the right one", async () => {
+    await openLockedFromList();
+    await submitPassword("wrong");
+    expect($("#unlock")).not.toBeNull();
+    expect($<HTMLElement>("#unlockErr").hidden).toBe(false);
+    expect(document.activeElement).toBe($("#unlockPw"));
+    await submitPassword("right");
+    expect(document.getElementById("unlock")).toBeNull();
+    expect($<HTMLTextAreaElement>("#body").value).toBe("the real text");
+  });
+
+  it("changes nothing when the sheet is dismissed", async () => {
+    const db = await openLockedFromList();
+    $<HTMLDialogElement>("#unlock").click(); // backdrop
+    await tick(20);
+    expect(document.getElementById("unlock")).toBeNull();
+    expect(location.hash).toBe("#/drafts");
+    expect(await db.listDrafts()).toHaveLength(0);
+    expect($<HTMLButtonElement>('.row[data-remote="2026-01-01-secret"]').disabled).toBe(false);
+  });
+
+  it("deletes a locked post without its password", async () => {
+    await openLockedFromList();
+    listRemotePostsMock.mockResolvedValue([]);
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    $<HTMLButtonElement>("#unlockDelete").click();
+    await tick(30);
+    expect(unpublishMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ slug: "2026-01-01-secret" }));
+    expect(document.getElementById("unlock")).toBeNull();
+    expect(document.querySelector('.row[data-remote="2026-01-01-secret"]')).toBeNull();
+  });
+
+  it("offers View on site in the sheet", async () => {
+    await openLockedFromList();
+    expect($<HTMLAnchorElement>('#unlock a.item').getAttribute("href")).toBe("/blog/2026-01-01-secret/");
+  });
+
+  it("explains that the text is gone and lets the author go back", async () => {
+    await openLockedFromList();
+    $<HTMLButtonElement>("#forgot").click();
+    expect($("#unlock").textContent).toMatch(/can't be recovered/);
+    expect($("#unlock").textContent).toMatch(/Kept:.*title, date and link/s);
+    $<HTMLButtonElement>("#backToPw").click();
+    expect(document.getElementById("unlockPw")).not.toBeNull();
+  });
+
+  it("Write it again opens an empty draft for the same post and writes nothing to the repo", async () => {
+    const db = await writeItAgain();
+    expect($<HTMLTextAreaElement>("#body").value).toBe("");
+    expect($<HTMLInputElement>("#title").value).toBe("Secret");
+    expect($("#replaceBanner").textContent).toMatch(/nothing changes until you publish/);
+    expect($<HTMLButtonElement>("#publish").disabled).toBe(true);
+    expect(publishMock).not.toHaveBeenCalled();
+    expect(unpublishMock).not.toHaveBeenCalled();
+    expect((await db.listDrafts())[0]).toMatchObject({ slug: "2026-01-01-secret", baseOid: "v3", replacesLocked: true, extra: { description: "d" } });
+  });
+
+  it("Discard removes the replacement draft and leaves the post alone", async () => {
+    const db = await writeItAgain();
+    $<HTMLButtonElement>("#discardReplace").click();
+    await tick(30);
+    expect(await db.listDrafts()).toHaveLength(0);
+    expect(location.hash).toBe("#/drafts");
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it("asks before replacing, and keeps the draft if declined", async () => {
+    const db = await writeItAgain();
+    type($("#body"), "new text");
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    $<HTMLButtonElement>("#publish").click();
+    await tick(30);
+    expect(publishMock).not.toHaveBeenCalled();
+    expect((await db.listDrafts())[0]).toMatchObject({ replacesLocked: true });
+    expect((await db.listDrafts())[0].pending).toBeUndefined();
+  });
+
+  it("publishes at the same slug once confirmed, and becomes an ordinary post", async () => {
+    const db = await writeItAgain();
+    type($("#body"), "new text");
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    publishMock.mockImplementationOnce(async (_s, d) => ({ ...d, published: true, pending: undefined, baseOid: "v4" }));
+    $<HTMLButtonElement>("#publish").click();
+    await tick(60);
+    expect(publishMock.mock.calls[0][1]).toMatchObject({ slug: "2026-01-01-secret", text: "new text", baseOid: "v3" });
+    expect((await db.listDrafts())[0].replacesLocked).toBeUndefined();
+  });
+
+  it("does not offer Forgot or Delete when the sheet is opened from a conflict", async () => {
+    signedIn();
+    const { ConflictError } = await import("../github");
+    publishMock.mockRejectedValueOnce(new ConflictError("v2", false));
+    const db = await boot();
+    await db.saveDraft({ id: "p", title: "P", text: "x", created: 1, updated: 1, slug: "s", published: true, baseOid: "v1" });
+    await boot("#/d/p");
+    type($("#body"), "my edit");
+    $<HTMLButtonElement>("#publish").click();
+    await tick(60);
+    fetchPostMock.mockResolvedValue({ ...(await lockedPost()), slug: "s", id: "r" });
+    $<HTMLButtonElement>("#loadRepo").click();
+    await tick(20);
+    expect(document.getElementById("unlockPw")).not.toBeNull();
+    expect(document.getElementById("forgot")).toBeNull();
+    expect(document.getElementById("unlockDelete")).toBeNull();
   });
 });

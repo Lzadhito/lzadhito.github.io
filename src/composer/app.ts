@@ -12,6 +12,7 @@ import {
   postUrl,
   publish,
   type RemotePost,
+  replacementDraft,
   saveSettings,
   unpublish,
 } from "./github";
@@ -66,7 +67,7 @@ async function sync() {
       // Keep edits typed while the request was in flight (including ones the autosave debounce hasn't written yet).
       if (current?.id === d.id) await saveDraft(current);
       const latest = (await getDraft(d.id)) ?? done;
-      const merged = { ...latest, slug: done.slug, pubDate: done.pubDate, published: done.published, baseOid: done.baseOid, pending: undefined };
+      const merged = { ...latest, slug: done.slug, pubDate: done.pubDate, published: done.published, baseOid: done.baseOid, pending: undefined, replacesLocked: d.pending === "publish" ? undefined : latest.replacesLocked };
       await saveDraft(merged);
       if (current?.id === d.id) {
         current = merged;
@@ -217,6 +218,12 @@ function editor() {
             <button id="loadRepo">Load repo version</button> <button id="overwrite">Overwrite</button></div>`
         : ""
     }
+    ${
+      d?.replacesLocked
+        ? `<div class="msg" id="replaceBanner">Replacing a locked post. Its old text can't be recovered, and nothing changes until you publish.
+            <button id="discardReplace">Discard</button></div>`
+        : ""
+    }
     ${settings.token ? "" : `<div class="msg" id="signedOutNote">${d?.pending ? `Queued on this device. It will publish after you <a href="#/settings">sign in</a>.` : `Saved on this device. <a href="#/settings">Sign in</a> to publish.`}</div>`}
     <dialog id="sheet">
       <div class="sheet">
@@ -303,11 +310,21 @@ function editor() {
         if (route() === "drafts") void drafts();
       });
     };
+  const discard = document.getElementById("discardReplace");
+  if (discard)
+    discard.onclick = async () => {
+      const gone = current!;
+      clearTimeout(timer); // a pending autosave must not bring it back
+      current = null;
+      await deleteDraft(gone.id);
+      location.hash = "#/drafts";
+    };
   publishBtn.onclick = async () => {
     const d = ensure();
     d.text = body.value;
     d.title = title.value;
     d.password = password.value;
+    if (d.replacesLocked && !confirm("This replaces the locked text. It can't be undone. Publish?")) return;
     if (d.published && hadPassword && !d.password) {
       if (!confirm("Remove the password? The post will be public.")) return;
     }
@@ -364,7 +381,7 @@ const localRowsHtml = (local: Draft[]) =>
   local
     .map(
       (d) => `<button class="row" data-id="${d.id}">${esc(effectiveTitle(d))}
-      <small>${new Date(d.updated).toLocaleString()} · ${d.pending ? "queued" : d.published ? "published" : "draft"}</small></button>`,
+      <small>${new Date(d.updated).toLocaleString()} · ${d.pending ? "queued" : d.published ? "published" : "draft"}${d.replacesLocked ? " · replaces a locked post" : ""}</small></button>`,
     )
     .join("");
 
@@ -391,7 +408,7 @@ function remoteSlotHtml(local: Draft[], st: RemoteState): string {
       return st.posts
         .map((r) => {
           const when = r.pubDate && !isNaN(Date.parse(r.pubDate)) ? `${new Date(r.pubDate).toLocaleDateString()} · ` : "";
-          return `<button class="row" data-remote="${esc(r.slug)}">${esc(r.title)}<small>${when}published</small></button>`;
+          return `<button class="row" data-remote="${esc(r.slug)}">${r.protected ? "🔒 " : ""}${esc(r.title)}<small>${when}published</small></button>`;
         })
         .join("");
   }
@@ -466,21 +483,104 @@ function wireDraftRows(local: Draft[]) {
   });
 }
 
-/** Fetches a repo post as a Draft, unlocking it with `knownPassword` or by asking. Null if the author backs out. */
+/** Fetches a repo post as a Draft, unlocking it with `knownPassword` or by asking in the unlock sheet. Null if the author backs out. */
 async function openRemoteDraft(s: ReturnType<typeof loadSettings>, slug: string, knownPassword?: string): Promise<Draft | null> {
   const d = await fetchPost(s, slug);
   if (!d.locked) return d;
-  const pw = knownPassword ?? prompt(`"${slug}" is password protected. Enter its password to edit it:`);
-  if (pw === null) return null;
-  try {
-    d.text = await decryptBody(d.locked, pw);
-  } catch {
-    alert("Wrong password.");
-    return null;
+  if (knownPassword) {
+    try {
+      return { ...d, text: await decryptBody(d.locked, knownPassword), password: knownPassword, locked: undefined };
+    } catch {} // the password changed elsewhere: fall through and ask
   }
-  d.password = pw;
-  d.locked = undefined;
-  return d;
+  const r = await unlockSheet(s, d, false);
+  return r === "deleted" ? null : r;
+}
+
+/** Bottom sheet for a locked post: password with inline errors, and (from the list) the ways out when it's forgotten.
+ * Resolves to the unlocked or replacement draft, "deleted", or null when dismissed. */
+function unlockSheet(s: ReturnType<typeof loadSettings>, d: Draft, manage: boolean): Promise<Draft | "deleted" | null> {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.id = "unlock";
+    document.body.append(dlg);
+    let done = false;
+    const settle = (v: Draft | "deleted" | null) => {
+      if (done) return;
+      done = true;
+      dlg.close();
+      dlg.remove();
+      resolve(v);
+    };
+    dlg.onclick = (e) => {
+      if (e.target === dlg) settle(null);
+    };
+    dlg.addEventListener("close", () => settle(null)); // Escape
+    const head = `<h3>${esc(effectiveTitle(d))}</h3>`;
+
+    const askPassword = () => {
+      dlg.innerHTML = `<div class="sheet">${head}<p>This post is locked.</p>
+        <form id="unlockForm">
+          <div class="pwline"><input id="unlockPw" type="password" autocomplete="off" placeholder="Password" aria-label="Password" />
+            <button type="button" id="reveal">Show</button></div>
+          <div class="msg error" id="unlockErr" role="alert" hidden>Wrong password. Try again.</div>
+          <button class="primary" id="unlockGo" type="submit">Unlock and edit</button>
+        </form>
+        ${
+          manage
+            ? `<button class="item" id="forgot">Forgot the password?</button>
+               <a class="item" href="${postUrl(d.slug!)}" target="_blank" rel="noopener">View on site</a>
+               <div class="danger-zone"><button class="item danger" id="unlockDelete">Delete</button></div>`
+            : ""
+        }</div>`;
+      const pw = dlg.querySelector<HTMLInputElement>("#unlockPw")!;
+      const err = dlg.querySelector<HTMLElement>("#unlockErr")!;
+      const go = dlg.querySelector<HTMLButtonElement>("#unlockGo")!;
+      pw.focus();
+      dlg.querySelector<HTMLButtonElement>("#reveal")!.onclick = (e) => {
+        const show = pw.type === "password";
+        pw.type = show ? "text" : "password";
+        (e.currentTarget as HTMLButtonElement).textContent = show ? "Hide" : "Show";
+      };
+      dlg.querySelector<HTMLFormElement>("#unlockForm")!.onsubmit = async (e) => {
+        e.preventDefault();
+        go.disabled = true;
+        try {
+          const text = await decryptBody(d.locked!, pw.value);
+          settle({ ...d, text, password: pw.value, locked: undefined });
+        } catch {
+          err.hidden = false;
+          go.disabled = false;
+          pw.focus();
+          pw.select();
+        }
+      };
+      if (!manage) return;
+      dlg.querySelector<HTMLButtonElement>("#forgot")!.onclick = forgot;
+      dlg.querySelector<HTMLButtonElement>("#unlockDelete")!.onclick = async () => {
+        if (!confirm(`Delete "${effectiveTitle(d)}"? It'll be removed from the site.`)) return;
+        try {
+          await unpublish(s, d);
+          settle("deleted");
+        } catch (e) {
+          err.textContent = `Couldn't delete: ${(e as Error).message}`;
+          err.hidden = false;
+        }
+      };
+    };
+
+    const forgot = () => {
+      dlg.innerHTML = `<div class="sheet">${head}
+        <p>The text can't be recovered. Nobody can open it, including you. That is what the lock is for.</p>
+        <p><b>Kept:</b> title, date and link.<br><b>Replaced:</b> the locked text, when you publish.</p>
+        <button class="primary" id="rewrite">Write it again</button>
+        <button class="item" id="backToPw">Back, let me try the password</button></div>`;
+      dlg.querySelector<HTMLButtonElement>("#rewrite")!.onclick = () => settle(replacementDraft(d));
+      dlg.querySelector<HTMLButtonElement>("#backToPw")!.onclick = askPassword;
+    };
+
+    askPassword();
+    dlg.showModal();
+  });
 }
 
 function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
@@ -489,8 +589,10 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
     b.onclick = async () => {
       b.disabled = true;
       try {
-        const d = await openRemoteDraft(s, slug);
-        if (!d) return void (b.disabled = false); // cancelled or wrong password
+        const fetched = await fetchPost(s, slug);
+        const d = fetched.locked ? await unlockSheet(s, fetched, true) : fetched;
+        if (d === "deleted") return void drafts();
+        if (!d) return void (b.disabled = false); // dismissed
         await saveDraft(d);
         location.hash = `#/d/${d.id}`;
       } catch (e) {
@@ -507,7 +609,7 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
         try {
           const full = await fetchPost(s, slug);
           const done = await unpublish(s, full);
-          await saveDraft(done);
+          if (!full.locked) await saveDraft(done); // a locked post has no readable text to keep
           void drafts();
         } catch (e) {
           alert(`Couldn't delete "${slug}": ${(e as Error).message}`);

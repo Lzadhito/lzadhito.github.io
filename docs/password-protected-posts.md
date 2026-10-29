@@ -45,8 +45,14 @@ limiting possible on a static site. Use a real password, not a word.
 - **Same device**: opens normally — the password is already saved locally.
 - **A different device/browser**: opening it from the Drafts list asks for the password, to
   decrypt it back into editable text.
-- **Forgotten password**: unrecoverable by design (no backdoor). The only way forward is
-  publishing new content with a new password, which overwrites the old body.
+- **Forgotten password**: the text is unrecoverable by design (no backdoor), but the post is never stuck.
+  Tap the locked post (🔒) in Drafts to open the unlock sheet. A wrong password shows an error in the
+  sheet and lets you try again. "Forgot the password?" then offers **Write it again**: a fresh draft for the
+  same post that keeps its title, date and link, with an empty body. Nothing changes in the repo until you
+  publish, and publishing asks once to confirm that the locked text is replaced. You can **Discard** the
+  draft from its banner at any time. The sheet also has **View on site** and **Delete**, neither of which
+  needs the password. The old ciphertext stays in git history; only a correct guess of the old password
+  could ever read it.
 
 Clearing the password field and publishing removes the protection (with a confirmation
 prompt) — the post goes out as plain markdown from then on.

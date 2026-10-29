@@ -18,6 +18,8 @@ export interface Draft {
   baseOid?: string;
   /** Ciphertext body of a protected post fetched from GitHub but not yet unlocked in this session. */
   locked?: string;
+  /** A fresh body for a protected post whose password was forgotten; Publish replaces the locked text. */
+  replacesLocked?: boolean;
 }
 
 const STORE = "drafts";

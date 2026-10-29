@@ -252,6 +252,8 @@ export interface RemotePost {
   pubDate?: string;
   /** Git blob id of the file; changes whenever the file's content does. */
   oid: string;
+  /** Password protected: the body is ciphertext, so opening it needs the password. */
+  protected: boolean;
 }
 
 /** Lists every published post straight from the repo, so posts published on other devices show up too.
@@ -270,8 +272,8 @@ export async function listRemotePosts(s: Settings): Promise<RemotePost[]> {
     .filter((e) => e.type === "blob" && /\.mdx?$/.test(e.name))
     .map((e) => {
       const slug = e.name.replace(/\.mdx?$/, "");
-      const { title, pubDate } = parseFrontmatter(e.object?.text ?? "");
-      return { slug, title: title || slug, pubDate, oid: e.object?.oid ?? "" };
+      const { title, pubDate, extra } = parseFrontmatter(e.object?.text ?? "");
+      return { slug, title: title || slug, pubDate, oid: e.object?.oid ?? "", protected: extra.protected === "true" };
     })
     .sort((a, b) => ms(b.pubDate) - ms(a.pubDate) || (a.slug < b.slug ? 1 : -1)); // dates come in mixed styles, so parse them
 }
@@ -307,6 +309,13 @@ export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
     extra,
     baseOid: data.repository.object?.oid,
   };
+}
+
+/** Turns a fetched locked post into a draft that replaces it: same slug, title, date, extra front matter and
+ * base version (so Publish overwrites the file and still notices a concurrent edit), but an empty body and no
+ * password. Nothing is written to the repo until that draft is published. */
+export function replacementDraft(locked: Draft): Draft {
+  return { ...locked, text: "", locked: undefined, password: undefined, replacesLocked: true };
 }
 
 /** Verifies the saved token can read the repo branch. Resolves to an error message, or null if OK. */

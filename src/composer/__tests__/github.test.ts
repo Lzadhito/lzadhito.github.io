@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Draft } from "../db";
-import { ConflictError, DEFAULTS, effectiveTitle, fetchPost, listRemotePosts, loadSettings, publish, saveSettings, toMarkdown, unpublish } from "../github";
+import { ConflictError, DEFAULTS, effectiveTitle, fetchPost, listRemotePosts, loadSettings, publish, replacementDraft, saveSettings, toMarkdown, unpublish } from "../github";
 
 const draft = (over: Partial<Draft> = {}): Draft => ({
   id: "abc123",
@@ -285,10 +285,10 @@ describe("listRemotePosts", () => {
       { name: "no-title.md", type: "blob", object: blob("o3", `no front matter`) },
     ]);
     expect(await listRemotePosts(settings)).toEqual([
-      { slug: "2026-02-02-new", title: "New one", pubDate: "Feb 02 2026", oid: "o2" },
-      { slug: "2026-01-01-old", title: "Old one", pubDate: "2026-01-01T00:00:00.000Z", oid: "o1" },
-      { slug: "2025-old-style", title: "Hand written", pubDate: "Nov 05 2025", oid: "o4" },
-      { slug: "no-title", title: "no-title", pubDate: undefined, oid: "o3" },
+      { slug: "2026-02-02-new", title: "New one", pubDate: "Feb 02 2026", oid: "o2", protected: false },
+      { slug: "2026-01-01-old", title: "Old one", pubDate: "2026-01-01T00:00:00.000Z", oid: "o1", protected: false },
+      { slug: "2025-old-style", title: "Hand written", pubDate: "Nov 05 2025", oid: "o4", protected: false },
+      { slug: "no-title", title: "no-title", pubDate: undefined, oid: "o3", protected: false },
     ]);
   });
 
@@ -296,6 +296,16 @@ describe("listRemotePosts", () => {
     listing([{ name: "secret.md", type: "blob", object: blob("o", `---\ntitle: "Locked"\nprotected: true\n---\n\nCIPHERTEXT`) }]);
     const [p] = await listRemotePosts(settings);
     expect(JSON.stringify(p)).not.toContain("CIPHERTEXT");
+  });
+
+  it("flags protected posts", async () => {
+    listing([
+      { name: "secret.md", type: "blob", object: blob("o", `---\ntitle: "Locked"\nprotected: true\n---\n\nCIPHERTEXT`) },
+      { name: "open.md", type: "blob", object: blob("p", `---\ntitle: "Open"\n---\n\nhi`) },
+    ]);
+    const posts = await listRemotePosts(settings);
+    expect(posts.find((p) => p.slug === "secret")?.protected).toBe(true);
+    expect(posts.find((p) => p.slug === "open")?.protected).toBe(false);
   });
 
   it("returns nothing if the directory can't be read", async () => {
@@ -339,6 +349,19 @@ describe("fetchPost", () => {
     const d = await fetchPost(settings, "secret");
     expect(d).toMatchObject({ title: "Secret", text: "", locked: "v1.c2FsdA==.aXYxMjM0NTY3.Zm9v", published: true });
     expect(d.extra).not.toHaveProperty("protected");
+  });
+});
+
+describe("replacementDraft", () => {
+  it("keeps the post's identity, drops the ciphertext and password, and marks itself as a replacement", () => {
+    const locked: Draft = {
+      id: "r", title: "Secret", text: "", locked: "v1.a.b.c", created: 1, updated: 1, slug: "2026-01-01-secret",
+      pubDate: "2026-01-01", published: true, extra: { description: "d" }, baseOid: "v3", password: "stale",
+    };
+    const d = replacementDraft(locked);
+    expect(d).toMatchObject({ slug: "2026-01-01-secret", title: "Secret", pubDate: "2026-01-01", extra: { description: "d" }, baseOid: "v3", published: true, text: "", replacesLocked: true });
+    expect(d.locked).toBeUndefined();
+    expect(d.password).toBeUndefined();
   });
 });
 
