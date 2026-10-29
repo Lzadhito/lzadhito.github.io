@@ -48,10 +48,10 @@ Alternative: compare `updatedDate` or content text. Rejected: dates are rewritte
 Alternative: always overwrite, as today. Rejected: it is the data-loss path this change exists to close.
 
 **5. Conflict resolution is a choice, not a merge.**
-On `ConflictError`, `sync()` clears `pending`, keeps the author's text, and shows a message with two actions. "Load repo version" saves the author's text as a new local draft (no slug, unpublished) and opens the repo version. "Overwrite" refreshes `baseOid` from the repo and re-queues the publish. Nothing is lost either way.
+On `ConflictError`, `sync()` clears `pending`, keeps the author's text, and the editor shows an inline strip with two actions (a toast carries only one; a draft with no remembered version uses the same strip instead of a separate confirm). "Load repo version" saves the author's text as a new local draft (no slug, unpublished) and opens the repo version. "Overwrite" refreshes `baseOid` from the repo and re-queues the publish. Nothing is lost either way.
 
 **6. A local copy no longer hides the repo row.**
-In the list, one row per slug. When a local draft has a `slug` and a `baseOid` that differs from the repo's entry oid, that row shows "newer version in repo". Opening it goes through the same load path, which asks before replacing local edits.
+In the list, one row per slug. When a local draft has a `slug` and a `baseOid` that differs from the repo's entry oid, that row shows "newer version in repo". The row opens the local copy, so nothing is replaced silently; a stale copy is caught at Update time (decision 4).
 Alternative: hide as today. Rejected: that is how a stale copy outranks a newer edit.
 
 **7. Restyle by reusing the blog's existing values, not by importing a new system.**
