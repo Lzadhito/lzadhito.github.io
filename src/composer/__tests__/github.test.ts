@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Draft } from "../db";
-import { DEFAULTS, effectiveTitle, fetchPost, listRemotePosts, loadSettings, publish, saveSettings, toMarkdown, unpublish } from "../github";
+import { ConflictError, DEFAULTS, effectiveTitle, fetchPost, listRemotePosts, loadSettings, publish, saveSettings, toMarkdown, unpublish } from "../github";
 
 const draft = (over: Partial<Draft> = {}): Draft => ({
   id: "abc123",
@@ -272,26 +272,30 @@ describe("unpublish", () => {
 });
 
 describe("listRemotePosts", () => {
-  it("lists markdown files in the blog directory, ignoring subdirectories", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({
-          data: {
-            repository: {
-              object: {
-                entries: [
-                  { name: "2026-01-01-old.md", type: "blob" },
-                  { name: "assets", type: "tree" },
-                  { name: "2026-02-02-new.mdx", type: "blob" },
-                ],
-              },
-            },
-          },
-        }),
-      ),
-    );
-    expect(await listRemotePosts(settings)).toEqual([{ slug: "2026-01-01-old" }, { slug: "2026-02-02-new" }]);
+  const blob = (oid: string, text: string) => ({ oid, text });
+  const listing = (entries: unknown[]) =>
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: { entries } } } })));
+
+  it("lists markdown files with title, date and version, ignoring subdirectories, newest first", async () => {
+    listing([
+      { name: "2026-01-01-old.md", type: "blob", object: blob("o1", `---\ntitle: "Old one"\npubDate: "2026-01-01T00:00:00.000Z"\n---\n\nx`) },
+      { name: "2025-old-style.md", type: "blob", object: blob("o4", `---\ntitle: "Hand written"\npubDate: "Nov 05 2025"\n---\nx`) },
+      { name: "assets", type: "tree" },
+      { name: "2026-02-02-new.mdx", type: "blob", object: blob("o2", `---\ntitle: 'New one'\npubDate: 'Feb 02 2026'\n---\nx`) },
+      { name: "no-title.md", type: "blob", object: blob("o3", `no front matter`) },
+    ]);
+    expect(await listRemotePosts(settings)).toEqual([
+      { slug: "2026-02-02-new", title: "New one", pubDate: "Feb 02 2026", oid: "o2" },
+      { slug: "2026-01-01-old", title: "Old one", pubDate: "2026-01-01T00:00:00.000Z", oid: "o1" },
+      { slug: "2025-old-style", title: "Hand written", pubDate: "Nov 05 2025", oid: "o4" },
+      { slug: "no-title", title: "no-title", pubDate: undefined, oid: "o3" },
+    ]);
+  });
+
+  it("never exposes a locked post's body in the listing", async () => {
+    listing([{ name: "secret.md", type: "blob", object: blob("o", `---\ntitle: "Locked"\nprotected: true\n---\n\nCIPHERTEXT`) }]);
+    const [p] = await listRemotePosts(settings);
+    expect(JSON.stringify(p)).not.toContain("CIPHERTEXT");
   });
 
   it("returns nothing if the directory can't be read", async () => {
@@ -335,5 +339,75 @@ describe("fetchPost", () => {
     const d = await fetchPost(settings, "secret");
     expect(d).toMatchObject({ title: "Secret", text: "", locked: "v1.c2FsdA==.aXYxMjM0NTY3.Zm9v", published: true });
     expect(d.extra).not.toHaveProperty("protected");
+  });
+});
+
+describe("edit safety (baseOid)", () => {
+  const PATH = "src/content/blog/2026-01-01-old.md";
+  /** Fake repo: `files` maps path → blob oid. A lookup pinned to our new commit ("new:path") answers "after". */
+  function mockRepo(files: Record<string, string>, opts: { pinnedFails?: boolean } = {}) {
+    const commits: any[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: string, init: any) => {
+        const { query, variables } = JSON.parse(init.body);
+        if (query.includes("createCommitOnBranch")) {
+          commits.push(variables.input);
+          return Response.json({ data: { createCommitOnBranch: { commit: { oid: "new" } } } });
+        }
+        const [ref, path] = variables.expr.split(":");
+        if (ref === "new") {
+          if (opts.pinnedFails) return Response.json({ errors: [{ message: "boom" }] });
+          return Response.json({ data: { repository: { object: { oid: "after" } } } });
+        }
+        return Response.json({ data: { repository: { ref: { target: { oid: "head1" } }, object: files[path] ? { oid: files[path] } : null } } });
+      }),
+    );
+    return { commits };
+  }
+  const published = (over: Partial<Draft> = {}) => draft({ slug: "2026-01-01-old", pubDate: "2026-01-01", published: true, baseOid: "v1", ...over });
+
+  it("publishes when the repo still has the version the draft was loaded from, and records the new version", async () => {
+    const { commits } = mockRepo({ [PATH]: "v1" });
+    const out = await publish(settings, published());
+    expect(commits).toHaveLength(1);
+    expect(out.baseOid).toBe("after");
+  });
+
+  it("refuses to write when the repo file has changed since the draft was loaded", async () => {
+    const { commits } = mockRepo({ [PATH]: "v2" });
+    const err = await publish(settings, published()).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err).toMatchObject({ remoteOid: "v2", unknownBase: false });
+    expect(commits).toHaveLength(0);
+  });
+
+  it("treats a draft with no remembered version as unknown when the file exists", async () => {
+    const { commits } = mockRepo({ [PATH]: "v2" });
+    const err = await publish(settings, published({ baseOid: undefined })).catch((e) => e);
+    expect(err).toMatchObject({ remoteOid: "v2", unknownBase: true });
+    expect(commits).toHaveLength(0);
+  });
+
+  it("re-creates a post whose file is gone, without a conflict", async () => {
+    const { commits } = mockRepo({});
+    await publish(settings, published({ published: false }));
+    expect(commits).toHaveLength(1);
+  });
+
+  it("still publishes if reading the new version back fails; the next Update will ask once", async () => {
+    mockRepo({ [PATH]: "v1" }, { pinnedFails: true });
+    const out = await publish(settings, published());
+    expect(out).toMatchObject({ published: true, baseOid: undefined });
+  });
+
+  it("remembers the version a fetched post came from", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: { text: "---\ntitle: x\n---\nb", oid: "v7" } } } })));
+    expect((await fetchPost(settings, "x")).baseOid).toBe("v7");
+  });
+
+  it("forgets the version on unpublish", async () => {
+    mockRepo({ [PATH]: "v1" });
+    expect((await unpublish(settings, published())).baseOid).toBeUndefined();
   });
 });

@@ -54,9 +54,17 @@ including ones written by hand or published from another device. Tap one to load
 content into the editor (Update, and Unpublish in the ⋯ menu, then work as usual); long-press to delete it
 straight from the repo without opening it.
 
-This means two devices editing the *same* post around the same time will race — whichever
-publishes last wins, same as any two people pushing to the same branch. Fine for a
-single-author blog; just don't run two composer tabs on the same post at once.
+On a device that isn't signed in yet, the list shows a **Sign in with GitHub** block under
+your local drafts. Sign in right there and the posts from your other devices appear in its
+place. If GitHub can't be reached, the list shows the reason and a **Try again** button.
+
+Remote posts show their title and date, newest first. A post you already have on this device
+stays one row; it's marked "newer version in repo" when another device has changed it since.
+
+Each post remembers which version of the file it was loaded from. If you press Update and the
+file in the repo has changed since, nothing is written. The editor keeps your text and offers
+**Load repo version** (your edit is kept as a separate draft) or **Overwrite**. Posts saved
+before this existed don't know their version, so they ask once.
 
 ## Security notes
 

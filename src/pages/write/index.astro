@@ -14,15 +14,19 @@
     <link rel="apple-touch-icon" href="/write/icon-192.png" />
     <title>Write</title>
     <style is:global>
+      /* The blog's look (src/styles/global.css): Atkinson, pale green-white base, green accent. */
+      @font-face { font-family: "Atkinson"; src: url("/fonts/atkinson-regular.woff") format("woff"); font-weight: 400; font-display: swap; }
+      @font-face { font-family: "Atkinson"; src: url("/fonts/atkinson-medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
+      @font-face { font-family: "Atkinson"; src: url("/fonts/atkinson-bold.woff") format("woff"); font-weight: 700; font-display: swap; }
       :root {
-        --bg: #f5f3ee; --fg: #24221e; --muted: #625d54; --rule: #d6d1c6; --accent: #2941a3; --on-accent: #f5f3ee;
+        --bg: #f7fbee; --fg: #222939; --muted: #4a5875; --rule: #d5dccb; --accent: #00742e; --on-accent: #ffffff; --danger: #c0392b;
         color-scheme: light dark;
       }
       @media (prefers-color-scheme: dark) {
-        :root { --bg: #1b1a18; --fg: #e7e3da; --muted: #a39d92; --rule: #3a3834; --accent: #9db0f2; --on-accent: #1b1a18; }
+        :root { --bg: #1b1d19; --fg: #e6ebdd; --muted: #a7b0a0; --rule: #33382f; --accent: #4cc97c; --on-accent: #1b1d19; --danger: #e57368; }
       }
       * { box-sizing: border-box; }
-      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 "Atkinson", system-ui, sans-serif; }
       #app { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
       header, footer.bar { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-bottom: 1px solid var(--rule); }
       footer.bar { border-bottom: 0; border-top: 1px solid var(--rule); padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
@@ -32,9 +36,11 @@
       button { font: inherit; padding: .5rem .8rem; border-radius: .5rem; border: 1px solid var(--rule); background: transparent; color: var(--fg); min-height: 44px; }
       button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
       button.icon { min-width: 44px; padding-inline: 0; font-size: 1.25rem; border-color: transparent; }
-      button.danger { color: #c0392b; }
+      button.danger { color: var(--danger); }
       a.viewlink { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .5rem; color: var(--accent); font-size: .85rem; font-weight: 600; text-decoration: none; }
       button:disabled { opacity: .5; }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      input:focus-visible, textarea:focus-visible { outline-offset: -2px; }
       input, textarea { font: inherit; color: var(--fg); background: transparent; border: 0; outline: 0; width: 100%; }
       input.title { font-weight: 600; font-size: 1.1rem; padding: .6rem .9rem; border-bottom: 1px solid var(--rule); }
       input.password { font-size: 1rem; padding: .6rem; margin: 0 0 .5rem; border: 1px solid var(--rule); border-radius: .5rem; }
@@ -54,8 +60,16 @@
       .danger-zone { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
       #toast { position: fixed; left: .75rem; right: .75rem; bottom: calc(1rem + env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem .25rem .25rem 1rem; border-radius: .75rem; background: var(--fg); color: var(--bg); }
       #toast button { color: inherit; font-weight: 600; text-decoration: underline; border: 0; }
+      #update { position: fixed; top: calc(.5rem + env(safe-area-inset-top)); left: .75rem; right: .75rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .25rem .25rem .25rem 1rem; border-radius: .75rem; background: var(--fg); color: var(--bg); }
+      #update button { color: inherit; font-weight: 600; text-decoration: underline; border: 0; }
+      .gap { padding: .9rem; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: .6rem; }
+      .gap p { margin: 0; }
+      .gap button { width: 100%; }
+      .gap a, .msg a { color: var(--accent); }
+      .gap a { display: inline-flex; align-items: center; min-height: 44px; }
+      .msg button { margin: .4rem .4rem 0 0; }
       .msg { padding: .5rem .9rem; font-size: .85rem; color: var(--muted); }
-      .msg.error { color: #c0392b; }
+      .msg.error { color: var(--danger); }
     </style>
   </head>
   <body>

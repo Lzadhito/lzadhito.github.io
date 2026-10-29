@@ -14,6 +14,8 @@ export interface Draft {
   extra?: Record<string, string>;
   /** Plaintext password; stays on this device only (like the GitHub token). Set → the body is encrypted on publish. */
   password?: string;
+  /** Git blob id of the repo file this draft was loaded from or last published as; lets Update notice a newer version. */
+  baseOid?: string;
   /** Ciphertext body of a protected post fetched from GitHub but not yet unlocked in this session. */
   locked?: string;
 }

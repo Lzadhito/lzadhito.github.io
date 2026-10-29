@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Draft } from "../db";
 
 const publishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({
@@ -11,7 +11,9 @@ const publishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({
   pending: undefined,
 }));
 const unpublishMock = vi.fn(async (_s: unknown, d: Draft): Promise<Draft> => ({ ...d, published: false, pending: undefined }));
-const listRemotePostsMock = vi.fn(async () => [] as { slug: string }[]);
+type RP = { slug: string; title: string; pubDate?: string; oid: string };
+const rp = (slug: string, over: Partial<RP> = {}): RP => ({ slug, title: slug, oid: `oid-${slug}`, ...over });
+const listRemotePostsMock = vi.fn(async () => [] as RP[]);
 const fetchPostMock = vi.fn(async (_s: unknown, slug: string): Promise<Draft> => ({
   id: `remote-${slug}`,
   title: slug,
@@ -348,7 +350,7 @@ describe("drafts and settings views", () => {
 
   it("merges in remote-only posts and opens one, caching it locally", async () => {
     localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
-    listRemotePostsMock.mockResolvedValue([{ slug: "hand-written-post" }]);
+    listRemotePostsMock.mockResolvedValue([rp("hand-written-post")]);
     const db = await boot("#/drafts");
     await tick(20);
     const row = $<HTMLButtonElement>('.row[data-remote="hand-written-post"]');
@@ -360,11 +362,82 @@ describe("drafts and settings views", () => {
     expect((await db.listDrafts())[0]).toMatchObject({ slug: "hand-written-post", published: true });
   });
 
-  it("hints at signing in when no token is saved, instead of silently showing nothing", async () => {
+  it("offers sign-in under the local drafts when no token is saved", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "a", title: "Mine", text: "a", created: 1, updated: 1 });
     await boot("#/drafts");
     await tick(20);
-    expect($(".msg").textContent).toMatch(/Sign in under Settings/);
+    expect($("#remoteGap").textContent).toMatch(/other devices aren't showing yet/);
+    expect($("#gapSignin").textContent).toBe("Sign in with GitHub");
+    expect($<HTMLAnchorElement>("#remoteGap a").getAttribute("href")).toBe("#/settings");
+    expect(document.querySelector("#list .row[data-id]")!.compareDocumentPosition($("#remoteGap"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(listRemotePostsMock).not.toHaveBeenCalled();
+  });
+
+  it("signs in from the Drafts block and fills the list in place", async () => {
+    authMock.requestDeviceCode.mockResolvedValue({
+      device_code: "dc", user_code: "ABCD-1234", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 5,
+    });
+    authMock.pollForToken.mockResolvedValue({ access_token: "gho_new", refresh_token: "ghr_new", expires_in: 28800 });
+    listRemotePostsMock.mockResolvedValue([rp("from-phone")]);
+    await boot("#/drafts");
+    await tick(20);
+    $<HTMLButtonElement>("#gapSignin").click();
+    await tick(80);
+    expect(JSON.parse(localStorage.getItem("composer-settings")!)).toMatchObject({ token: "gho_new" });
+    expect(location.hash).toBe("#/drafts");
+    expect(document.getElementById("remoteGap")).toBeNull();
+    expect($('.row[data-remote="from-phone"]')).toBeTruthy();
+  });
+
+  it("restores the Drafts block with the reason when sign-in fails", async () => {
+    authMock.requestDeviceCode.mockRejectedValue(new Error("Device flow must be enabled"));
+    await boot("#/drafts");
+    await tick(20);
+    $<HTMLButtonElement>("#gapSignin").click();
+    await tick(30);
+    expect($("#gapInfo").textContent).toBe("Device flow must be enabled");
+    expect($<HTMLButtonElement>("#gapSignin").disabled).toBe(false);
+  });
+
+  it("offers only Settings when sign-in is not configured", async () => {
+    vi.resetModules();
+    vi.doMock("../config", () => ({ AUTH: { clientId: "", proxy: "" } }));
+    await boot("#/drafts");
+    await tick(20);
+    expect(document.getElementById("gapSignin")).toBeNull();
+    expect($("#remoteGap a").textContent).toMatch(/Settings/);
+    vi.doMock("../config", () => ({ AUTH: { clientId: "cid", proxy: "https://proxy.test" } }));
+  });
+
+  it("retries loading remote posts from the error state, keeping local rows", async () => {
+    localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+    const db = await boot();
+    listRemotePostsMock.mockRejectedValue(new Error("boom"));
+    await db.saveDraft({ id: "a", title: "Mine", text: "a", created: 1, updated: 1 });
+    await boot("#/drafts");
+    await tick(20);
+    expect($(".msg.error").textContent).toMatch(/boom/);
+    expect(document.querySelector('.row[data-id="a"]')).toBeTruthy();
+    listRemotePostsMock.mockResolvedValue([rp("later")]);
+    $<HTMLButtonElement>("#retry").click();
+    await tick(20);
+    expect($('.row[data-remote="later"]')).toBeTruthy();
+  });
+
+  it("tells a signed-out author their work is saved here and queues Publish until sign-in", async () => {
+    await boot();
+    expect($("#signedOutNote").textContent).toMatch(/Saved on this device\. Sign in to publish/);
+    type($("#body"), "hello");
+    $<HTMLButtonElement>("#publish").click();
+    await tick(50);
+    expect(location.hash).toBe("#/settings");
+    const [queued] = await (await import("../db")).listDrafts();
+    expect(queued.pending).toBe("publish");
+    location.hash = `#/d/${queued.id}`;
+    await tick(30);
+    expect($("#status").textContent).toMatch(/Will publish after you sign in/);
+    expect($("#signedOutNote").textContent).toMatch(/Queued on this device/);
   });
 
   it("says it's offline instead of silently skipping the remote merge", async () => {
@@ -394,7 +467,7 @@ describe("drafts and settings views", () => {
 
   it("doesn't duplicate a remote post that's already tracked locally", async () => {
     localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
-    listRemotePostsMock.mockResolvedValue([{ slug: "s" }]);
+    listRemotePostsMock.mockResolvedValue([rp("s")]);
     const db = await boot();
     await db.saveDraft({ id: "b", title: "Newer", text: "b", created: 2, updated: 2, published: true, slug: "s" });
     await boot("#/drafts");
@@ -404,7 +477,7 @@ describe("drafts and settings views", () => {
 
   it("deletes a remote-only post after a long-press and confirmation", async () => {
     localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
-    listRemotePostsMock.mockResolvedValue([{ slug: "hand-written-post" }]);
+    listRemotePostsMock.mockResolvedValue([rp("hand-written-post")]);
     await boot("#/drafts");
     await tick(20);
     vi.stubGlobal("confirm", () => true);
@@ -523,5 +596,147 @@ describe("drafts and settings views", () => {
       repo: "lzadhito/lzadhito.github.io",
       branch: "master",
     });
+  });
+});
+
+describe("remote posts and conflicts", () => {
+  const signedIn = () => localStorage.setItem("composer-settings", JSON.stringify({ token: "t" }));
+  const pubDraft = (over: Partial<Draft> = {}): Draft => ({
+    id: "p", title: "Mine", text: "body", created: 1, updated: 1, slug: "s", pubDate: "d", published: true, baseOid: "v1", ...over,
+  });
+
+  it("shows remote posts by title and date, in the order given", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([
+      rp("b", { title: "Newest post", pubDate: "2026-02-02T00:00:00.000Z" }),
+      rp("a", { title: "Older post", pubDate: "2026-01-01T00:00:00.000Z" }),
+    ]);
+    await boot("#/drafts");
+    await tick(20);
+    const rows = [...document.querySelectorAll(".row[data-remote]")].map((r) => r.textContent!.replace(/\s+/g, " "));
+    expect(rows[0]).toMatch(/^Newest post.*published/);
+    expect(rows[1]).toMatch(/^Older post/);
+    expect(rows[0]).not.toMatch(/\bb\b.*published$/);
+  });
+
+  it("flags a local copy when the repo has a newer version, once per post", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("s", { oid: "v2" })]);
+    const db = await boot();
+    await db.saveDraft(pubDraft());
+    await boot("#/drafts");
+    await tick(30);
+    expect(document.querySelectorAll(".row")).toHaveLength(1);
+    expect($(".row[data-id='p']").textContent).toMatch(/newer version in repo/);
+  });
+
+  it("does not flag a local copy that matches the repo, or one with no remembered version", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("s", { oid: "v1" }), rp("t", { oid: "zzz" })]);
+    const db = await boot();
+    await db.saveDraft(pubDraft());
+    await db.saveDraft(pubDraft({ id: "q", slug: "t", baseOid: undefined }));
+    await boot("#/drafts");
+    await tick(30);
+    expect(document.body.textContent).not.toMatch(/newer version in repo/);
+  });
+
+  it("keeps the version GitHub reports after a publish, so the next Update isn't a false conflict", async () => {
+    signedIn();
+    publishMock.mockImplementationOnce(async (_s, d) => ({ ...d, slug: "s", pubDate: "d", published: true, pending: undefined, baseOid: "after" }));
+    const db = await boot();
+    type($("#body"), "hello");
+    $<HTMLButtonElement>("#publish").click();
+    await tick(60);
+    expect((await db.listDrafts())[0].baseOid).toBe("after");
+  });
+
+  async function conflictFor(db: Awaited<ReturnType<typeof boot>>, unknownBase = false) {
+    signedIn();
+    const { ConflictError } = await import("../github");
+    publishMock.mockRejectedValueOnce(new ConflictError("v2", unknownBase));
+    await db.saveDraft(pubDraft());
+    await boot("#/d/p");
+    type($("#body"), "my edit");
+    $<HTMLButtonElement>("#publish").click();
+    await tick(60);
+  }
+
+  it("stops an Update that would overwrite a newer version, and keeps the author's text", async () => {
+    const db = await boot();
+    await conflictFor(db);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    expect($("#conflict").textContent).toMatch(/changed in the repo/);
+    expect($<HTMLTextAreaElement>("#body").value).toBe("my edit");
+    const d = (await db.getDraft("p"))!;
+    expect(d).toMatchObject({ text: "my edit", pending: undefined });
+  });
+
+  it("says so when the copy has no remembered version", async () => {
+    const db = await boot();
+    await conflictFor(db, true);
+    expect($("#conflict").textContent).toMatch(/doesn't know which version/);
+  });
+
+  it("Overwrite publishes on top of the current repo version", async () => {
+    const db = await boot();
+    await conflictFor(db);
+    $<HTMLButtonElement>("#overwrite").click();
+    await tick(60);
+    expect(publishMock).toHaveBeenCalledTimes(2);
+    expect(publishMock.mock.calls[1][1]).toMatchObject({ text: "my edit", baseOid: "v2" });
+    expect(document.getElementById("conflict")).toBeNull();
+  });
+
+  it("Load repo version opens the repo copy and keeps the author's text as a separate draft", async () => {
+    const db = await boot();
+    await conflictFor(db);
+    $<HTMLButtonElement>("#loadRepo").click();
+    await tick(60);
+    expect($<HTMLTextAreaElement>("#body").value).toBe("content of s");
+    const all = await db.listDrafts();
+    const mine = all.find((d) => d.text === "my edit")!;
+    expect(mine).toMatchObject({ slug: undefined, published: false });
+    expect(mine.title).toMatch(/\(my edit\)$/);
+    expect(all.find((d) => d.id === "p")).toMatchObject({ text: "content of s", published: true });
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("update notice", () => {
+  const visible = () => {
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const withRunning = (src: string) => {
+    document.head.innerHTML = `<script type="module" src="${src}"></script>`;
+  };
+  const pageWith = (src: string) =>
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`<html><body><script type="module" src="${src}"></script></body></html>`)));
+  afterEach(() => (document.head.innerHTML = ""));
+
+  it("offers a reload when a newer build is online, and never reloads by itself", async () => {
+    await boot();
+    withRunning("/_astro/index.OLD.js");
+    pageWith("/_astro/index.NEW.js");
+    type($("#body"), "mid-sentence");
+    visible();
+    await tick(30);
+    expect($("#update").textContent).toMatch(/Update available/);
+    expect($<HTMLTextAreaElement>("#body").value).toBe("mid-sentence");
+  });
+
+  it("stays quiet when the build is the same, or when offline", async () => {
+    await boot();
+    withRunning("/_astro/index.SAME.js");
+    pageWith("/_astro/index.SAME.js");
+    visible();
+    await tick(30);
+    expect(document.getElementById("update")).toBeNull();
+    pageWith("/_astro/index.NEW.js");
+    online(false);
+    visible();
+    await tick(30);
+    expect(document.getElementById("update")).toBeNull();
   });
 });

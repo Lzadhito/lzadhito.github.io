@@ -164,7 +164,25 @@ async function head(s: Settings, probePath?: string) {
     { owner, name, ref: `refs/heads/${s.branch}`, expr: `${s.branch}:${probePath ?? ""}` },
   );
   if (!data.repository.ref) throw new Error(`Branch ${s.branch} not found in ${s.repo}`);
-  return { oid: data.repository.ref.target.oid, exists: !!data.repository.object && !!probePath };
+  return { oid: data.repository.ref.target.oid, exists: !!data.repository.object && !!probePath, fileOid: data.repository.object?.oid };
+}
+
+/** The author's copy was made from a different version of the file than the one now in the repo. */
+export class ConflictError extends Error {
+  constructor(public remoteOid: string, public unknownBase: boolean) {
+    super(unknownBase ? "This post already exists in the repo and this copy doesn't know which version it came from." : "This post changed in the repo since you opened it.");
+  }
+}
+
+/** Blob oid of `path` as it is in commit `commitOid`; pinned to our own commit so later pushes can't leak in. */
+async function fileOidAt(s: Settings, commitOid: string, path: string): Promise<string | undefined> {
+  const [owner, name] = s.repo.split("/");
+  const data = await gql<{ repository: { object: { oid: string } | null } }>(
+    s,
+    `query($owner:String!,$name:String!,$expr:String!){ repository(owner:$owner,name:$name){ object(expression:$expr){ oid } } }`,
+    { owner, name, expr: `${commitOid}:${path}` },
+  );
+  return data.repository.object?.oid;
 }
 
 async function commit(
@@ -173,7 +191,7 @@ async function commit(
   oid: string,
   changes: { additions?: { path: string; contents: string }[]; deletions?: { path: string }[] },
 ) {
-  await gql(
+  const data = await gql<{ createCommitOnBranch: { commit: { oid: string } } }>(
     s,
     `mutation($input:CreateCommitOnBranchInput!){ createCommitOnBranch(input:$input){ commit{ oid } } }`,
     {
@@ -185,6 +203,7 @@ async function commit(
       },
     },
   );
+  return data.createCommitOnBranch.commit.oid;
 }
 
 /** Adds or updates the post file. Assigns slug + pubDate on first publish. Returns the updated draft. */
@@ -203,35 +222,58 @@ export async function publish(s: Settings, d: Draft): Promise<Draft> {
     }
     next.pubDate = new Date().toISOString();
   }
-  const { oid } = await head(s);
-  await commit(s, `${d.published ? "Update" : "Publish"}: ${effectiveTitle(next)}`, oid, {
-    additions: [{ path: pathFor(next.slug!), contents: b64(await toMarkdown(next)) }],
+  const path = pathFor(next.slug!);
+  const { oid, fileOid } = await head(s, path);
+  // Same query gave us the branch head and the file version, and the commit below pins that head,
+  // so GitHub rejects the write if anyone pushed in between.
+  if (fileOid && fileOid !== next.baseOid) throw new ConflictError(fileOid, !next.baseOid);
+  const commitOid = await commit(s, `${d.published ? "Update" : "Publish"}: ${effectiveTitle(next)}`, oid, {
+    additions: [{ path, contents: b64(await toMarkdown(next)) }],
   });
   next.published = true;
   next.pending = undefined;
+  next.baseOid = await fileOidAt(s, commitOid, path).catch(() => undefined); // unknown → next Update asks once
   return next;
 }
 
 export async function unpublish(s: Settings, d: Draft): Promise<Draft> {
   const { oid } = await head(s);
   await commit(s, `Unpublish: ${effectiveTitle(d)}`, oid, { deletions: [{ path: pathFor(d.slug!) }] });
-  return { ...d, published: false, pending: undefined };
+  return { ...d, published: false, pending: undefined, baseOid: undefined };
 }
 
 export const postUrl = (slug: string) => `/blog/${slug}/`;
 
-/** Lists every published post's slug straight from the repo, so posts published on other devices show up too. */
-export async function listRemotePosts(s: Settings): Promise<{ slug: string }[]> {
+const ms = (d?: string) => (d ? Date.parse(d) || 0 : 0);
+
+export interface RemotePost {
+  slug: string;
+  title: string;
+  pubDate?: string;
+  /** Git blob id of the file; changes whenever the file's content does. */
+  oid: string;
+}
+
+/** Lists every published post straight from the repo, so posts published on other devices show up too.
+ * One query returns every file's text; only the front matter is read, so a locked post's ciphertext goes unused. */
+export async function listRemotePosts(s: Settings): Promise<RemotePost[]> {
   const [owner, name] = s.repo.split("/");
-  const data = await gql<{ repository: { object: { entries?: { name: string; type: string }[] } | null } }>(
+  const data = await gql<{ repository: { object: { entries?: { name: string; type: string; object?: { oid: string; text?: string } | null }[] } | null } }>(
     s,
     `query($owner:String!,$name:String!,$expr:String!){
-      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Tree { entries { name type } } } }
+      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Tree { entries { name type object { ... on Blob { oid text } } } } } }
     }`,
     { owner, name, expr: `${s.branch}:${DIR}` },
   );
   const entries = data.repository.object?.entries ?? [];
-  return entries.filter((e) => e.type === "blob" && /\.mdx?$/.test(e.name)).map((e) => ({ slug: e.name.replace(/\.mdx?$/, "") }));
+  return entries
+    .filter((e) => e.type === "blob" && /\.mdx?$/.test(e.name))
+    .map((e) => {
+      const slug = e.name.replace(/\.mdx?$/, "");
+      const { title, pubDate } = parseFrontmatter(e.object?.text ?? "");
+      return { slug, title: title || slug, pubDate, oid: e.object?.oid ?? "" };
+    })
+    .sort((a, b) => ms(b.pubDate) - ms(a.pubDate) || (a.slug < b.slug ? 1 : -1)); // dates come in mixed styles, so parse them
 }
 
 /** Reads a published post's file and turns it back into a Draft, so it can be opened, edited, or deleted.
@@ -239,10 +281,10 @@ export async function listRemotePosts(s: Settings): Promise<{ slug: string }[]> 
  * caller needs to decrypt it with the password before it's editable. See decryptBody() in postCrypto.ts. */
 export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
   const [owner, name] = s.repo.split("/");
-  const data = await gql<{ repository: { object: { text?: string } | null } }>(
+  const data = await gql<{ repository: { object: { text?: string; oid?: string } | null } }>(
     s,
     `query($owner:String!,$name:String!,$expr:String!){
-      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Blob { text } } }
+      repository(owner:$owner,name:$name){ object(expression:$expr){ ... on Blob { text oid } } }
     }`,
     { owner, name, expr: `${s.branch}:${pathFor(slug)}` },
   );
@@ -263,6 +305,7 @@ export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
     pubDate,
     published: true,
     extra,
+    baseOid: data.repository.object?.oid,
   };
 }
 

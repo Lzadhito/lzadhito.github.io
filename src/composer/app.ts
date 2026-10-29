@@ -4,12 +4,14 @@ import { type Draft, deleteDraft, getDraft, listDrafts, newId, saveDraft } from 
 import { decryptBody } from "../lib/postCrypto";
 import {
   checkToken,
+  ConflictError,
   effectiveTitle,
   fetchPost,
   listRemotePosts,
   loadSettings,
   postUrl,
   publish,
+  type RemotePost,
   saveSettings,
   unpublish,
 } from "./github";
@@ -24,6 +26,8 @@ let current: Draft | null = null; // null until the first keystroke, so opening 
 let status = "";
 let statusClass = "";
 let syncing = false;
+/** An Update that was refused because the repo file changed; shown as a strip in that draft's editor. */
+let conflict: { id: string; remoteOid: string; unknownBase: boolean } | null = null;
 
 const setStatus = (msg: string, cls = "") => {
   status = msg;
@@ -46,11 +50,23 @@ async function sync() {
     for (const d of await listDrafts()) {
       if (!d.pending) continue;
       setStatus(d.pending === "publish" ? "Publishing…" : "Unpublishing…");
-      const done = d.pending === "publish" ? await publish(s, d) : await unpublish(s, d);
+      let done: Draft;
+      try {
+        done = d.pending === "publish" ? await publish(s, d) : await unpublish(s, d);
+      } catch (e) {
+        if (!(e instanceof ConflictError)) throw e;
+        // Nothing was written. Keep the author's text, stop retrying, and let them choose.
+        await saveDraft({ ...((await getDraft(d.id)) ?? d), pending: undefined });
+        conflict = { id: d.id, remoteOid: e.remoteOid, unknownBase: e.unknownBase };
+        setStatus("Not published: the repo has a different version.", "error");
+        if (current?.id === d.id) current = (await getDraft(d.id)) ?? current;
+        if (route().startsWith("d/") && current?.id === d.id) editor();
+        continue;
+      }
       // Keep edits typed while the request was in flight (including ones the autosave debounce hasn't written yet).
       if (current?.id === d.id) await saveDraft(current);
       const latest = (await getDraft(d.id)) ?? done;
-      const merged = { ...latest, slug: done.slug, pubDate: done.pubDate, published: done.published, pending: undefined };
+      const merged = { ...latest, slug: done.slug, pubDate: done.pubDate, published: done.published, baseOid: done.baseOid, pending: undefined };
       await saveDraft(merged);
       if (current?.id === d.id) {
         current = merged;
@@ -85,9 +101,29 @@ async function watchLive(d: Draft) {
 window.addEventListener("online", sync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flush();
-  else sync();
+  else {
+    void sync();
+    void checkForUpdate();
+  }
 });
 window.addEventListener("pagehide", flush);
+
+// ---------- app updates ----------
+
+const appScript = () => document.querySelector('script[type="module"][src*="/_astro/"]')?.getAttribute("src");
+
+/** An installed app can stay open for days. When it comes back to the front, say so if a newer build is online. */
+async function checkForUpdate() {
+  const running = appScript();
+  if (!running || !navigator.onLine || document.getElementById("update")) return;
+  try {
+    const html = await (await fetch("/write/", { cache: "no-store" })).text();
+    const latest = html.match(/<script[^>]*type="module"[^>]*src="([^"]*\/_astro\/[^"]+)"/)?.[1];
+    if (!latest || latest === running) return;
+    document.body.insertAdjacentHTML("beforeend", `<div id="update">Update available. <button id="reload">Reload</button></div>`);
+    document.getElementById("reload")!.onclick = () => location.reload(); // never automatic: the author may be mid-sentence
+  } catch {} // offline or a blip: try again next time
+}
 
 // ---------- autosave ----------
 
@@ -175,7 +211,13 @@ function editor() {
     <footer class="bar">
       ${["**", "_", "> ", "- ", "[]()"].map((t) => `<button data-ins="${esc(t)}">${esc(t.trim() || t)}</button>`).join("")}
     </footer>
-    ${settings.token ? "" : `<div class="msg">Add your GitHub token in <a href="#/settings">Settings</a> to publish.</div>`}
+    ${
+      conflict && d && conflict.id === d.id
+        ? `<div class="msg error" id="conflict">${conflict.unknownBase ? "This post already exists in the repo and this copy doesn't know which version it came from." : "This post changed in the repo since you opened it."} Your text is kept.
+            <button id="loadRepo">Load repo version</button> <button id="overwrite">Overwrite</button></div>`
+        : ""
+    }
+    ${settings.token ? "" : `<div class="msg" id="signedOutNote">${d?.pending ? `Queued on this device. It will publish after you <a href="#/settings">sign in</a>.` : `Saved on this device. <a href="#/settings">Sign in</a> to publish.`}</div>`}
     <dialog id="sheet">
       <div class="sheet">
         ${published ? `<a class="item" id="viewPost" href="${postUrl(d!.slug!)}" target="_blank" rel="noopener">View post</a>` : ""}
@@ -272,10 +314,42 @@ function editor() {
     d.pending = "publish";
     d.updated = Date.now();
     await saveDraft(d);
-    if (!loadSettings().token) return void (location.hash = "#/settings");
+    if (!loadSettings().token) {
+      setStatus("Queued. Will publish after you sign in.");
+      return void (location.hash = "#/settings");
+    }
     if (!navigator.onLine) return setStatus("Offline. Queued; will publish when back online.");
     void sync();
   };
+  const keepMine = document.getElementById("overwrite");
+  if (keepMine)
+    keepMine.onclick = async () => {
+      const mine = { ...ensure(), text: body.value, title: title.value, baseOid: conflict!.remoteOid, pending: "publish" as const, updated: Date.now() };
+      conflict = null;
+      current = mine;
+      await saveDraft(mine);
+      void sync();
+    };
+  const loadRepo = document.getElementById("loadRepo");
+  if (loadRepo)
+    loadRepo.onclick = async () => {
+      const mine = { ...ensure(), text: body.value, title: title.value };
+      (loadRepo as HTMLButtonElement).disabled = true;
+      try {
+        const theirs = await openRemoteDraft(loadSettings(), mine.slug!, mine.password);
+        if (!theirs) return void ((loadRepo as HTMLButtonElement).disabled = false);
+        // The author's version survives as its own unpublished draft.
+        await saveDraft({ ...mine, id: newId(), title: `${effectiveTitle(mine)} (my edit)`, slug: undefined, pubDate: undefined, published: false, pending: undefined, baseOid: undefined });
+        await saveDraft({ ...theirs, id: mine.id });
+        conflict = null;
+        current = { ...theirs, id: mine.id };
+        setStatus("Loaded the repo version. Your edit is saved as a separate draft.");
+        editor();
+      } catch (e) {
+        alert(`Couldn't load the repo version: ${(e as Error).message}`);
+        (loadRepo as HTMLButtonElement).disabled = false;
+      }
+    };
   const unpub = document.getElementById("unpub");
   if (unpub)
     unpub.onclick = async () => {
@@ -286,50 +360,91 @@ function editor() {
     };
 }
 
-function rowHtml(local: Draft[], remoteSlugs: string[]): string {
-  if (!local.length && !remoteSlugs.length) return `<div class="msg">Nothing yet.</div>`;
-  const localRows = local.map(
-    (d) => `<button class="row" data-id="${d.id}">${esc(effectiveTitle(d))}
+const localRowsHtml = (local: Draft[]) =>
+  local
+    .map(
+      (d) => `<button class="row" data-id="${d.id}">${esc(effectiveTitle(d))}
       <small>${new Date(d.updated).toLocaleString()} · ${d.pending ? "queued" : d.published ? "published" : "draft"}</small></button>`,
-  );
-  const remoteRows = remoteSlugs.map(
-    (slug) => `<button class="row" data-remote="${esc(slug)}">${esc(slug)}<small>published</small></button>`,
-  );
-  return localRows.join("") + remoteRows.join("");
+    )
+    .join("");
+
+/** What the Drafts list knows about posts published elsewhere. One state, one place on screen. */
+type RemoteState = { k: "signed-out" | "loading" | "offline" } | { k: "error"; msg: string } | { k: "ready"; posts: RemotePost[] };
+
+function remoteSlotHtml(local: Draft[], st: RemoteState): string {
+  switch (st.k) {
+    case "loading":
+      return `<div class="msg">Checking GitHub for posts from your other devices…</div>`;
+    case "offline":
+      return `<div class="msg">Offline. Showing drafts saved on this device only.</div>`;
+    case "error":
+      return `<div class="msg error">Couldn't check GitHub for posts from other devices: ${esc(st.msg)}</div>
+        <div class="gap"><button id="retry">Try again</button></div>`;
+    case "signed-out":
+      return `<div class="gap" id="remoteGap">
+        <p>Posts from your other devices aren't showing yet.</p>
+        ${authEnabled(AUTH) ? `<button class="primary" id="gapSignin">Sign in with GitHub</button><div class="msg" id="gapInfo"></div>` : ""}
+        <a href="#/settings">${authEnabled(AUTH) ? "Or paste a token in Settings" : "Add a token in Settings"}</a>
+      </div>`;
+    case "ready":
+      if (!st.posts.length) return local.length ? "" : `<div class="msg">Nothing yet.</div>`;
+      return st.posts
+        .map((r) => {
+          const when = r.pubDate && !isNaN(Date.parse(r.pubDate)) ? `${new Date(r.pubDate).toLocaleDateString()} · ` : "";
+          return `<button class="row" data-remote="${esc(r.slug)}">${esc(r.title)}<small>${when}published</small></button>`;
+        })
+        .join("");
+  }
 }
 
-function setRemoteStatus(msg: string, cls = "") {
-  document.getElementById("remoteStatus")?.remove();
-  if (!msg) return;
-  document.querySelector("header")?.insertAdjacentHTML("afterend", `<div class="msg ${cls}" id="remoteStatus">${esc(msg)}</div>`);
+function renderRemoteSlot(local: Draft[], st: RemoteState) {
+  const slot = document.getElementById("remoteSlot");
+  if (!slot) return; // navigated away
+  slot.innerHTML = remoteSlotHtml(local, st);
+  wireRemoteRows(loadSettings());
+  const retry = document.getElementById("retry");
+  if (retry) retry.onclick = () => void loadRemote(local);
+  const gap = document.getElementById("gapSignin");
+  if (gap)
+    gap.onclick = () =>
+      startSignIn(gap as HTMLButtonElement, document.getElementById("gapInfo")!, () => {
+        void sync();
+        void loadRemote(local);
+      });
+}
+
+/** Merge in posts published from other devices/browsers, so they can be opened, edited, or deleted here too. */
+async function loadRemote(local: Draft[]) {
+  const s = loadSettings();
+  if (!s.token) return renderRemoteSlot(local, { k: "signed-out" });
+  if (!navigator.onLine) return renderRemoteSlot(local, { k: "offline" });
+  renderRemoteSlot(local, { k: "loading" });
+  try {
+    const remote = await listRemotePosts(s);
+    const known = new Set(local.filter((d) => d.slug).map((d) => d.slug));
+    const posts = remote.filter((r) => !known.has(r.slug));
+    if (route() !== "drafts") return;
+    renderRemoteSlot(local, { k: "ready", posts });
+    // One row per post: a local copy stays its own row, flagged when the repo has moved on since it was loaded.
+    for (const d of local) {
+      const r = remote.find((x) => x.slug === d.slug);
+      if (r && d.baseOid && r.oid && r.oid !== d.baseOid)
+        document.querySelector(`.row[data-id="${d.id}"] small`)?.append(" · newer version in repo");
+    }
+  } catch (e) {
+    if (route() === "drafts") renderRemoteSlot(local, { k: "error", msg: (e as Error).message });
+  }
 }
 
 async function drafts() {
   const local = await listDrafts();
   app.innerHTML = `
     <header><button id="back">←</button><span class="grow"><b>Drafts</b></span><button id="settings">Settings</button></header>
-    <div class="list" id="list">${rowHtml(local, [])}</div>`;
+    <div class="list" id="list">${localRowsHtml(local)}<div id="remoteSlot"></div></div>`;
   document.getElementById("back")!.onclick = () => (location.hash = "#/");
   document.getElementById("settings")!.onclick = () => (location.hash = "#/settings");
   wireDraftRows(local);
-
-  // Merge in posts published from other devices/browsers, so they can be opened, edited, or deleted here too.
-  const s = loadSettings();
-  if (!s.token) return setRemoteStatus('Sign in under Settings to also see posts published from other devices.');
-  if (!navigator.onLine) return setRemoteStatus("Offline — showing drafts saved on this device only.");
-  try {
-    const remote = await listRemotePosts(s);
-    const known = new Set(local.filter((d) => d.slug).map((d) => d.slug));
-    const remoteSlugs = remote.filter((r) => !known.has(r.slug)).sort((a, b) => (a.slug < b.slug ? 1 : -1));
-    if (route() !== "drafts") return; // don't clobber if the user already navigated away
-    if (!remoteSlugs.length) return;
-    const listEl = document.getElementById("list");
-    if (listEl) listEl.innerHTML = rowHtml(local, remoteSlugs.map((r) => r.slug));
-    wireDraftRows(local);
-    wireRemoteRows(s);
-  } catch (e) {
-    setRemoteStatus(`Couldn't check GitHub for posts from other devices: ${(e as Error).message}`, "error");
-  }
+  await loadRemote(local);
 }
 
 function wireDraftRows(local: Draft[]) {
@@ -351,25 +466,31 @@ function wireDraftRows(local: Draft[]) {
   });
 }
 
+/** Fetches a repo post as a Draft, unlocking it with `knownPassword` or by asking. Null if the author backs out. */
+async function openRemoteDraft(s: ReturnType<typeof loadSettings>, slug: string, knownPassword?: string): Promise<Draft | null> {
+  const d = await fetchPost(s, slug);
+  if (!d.locked) return d;
+  const pw = knownPassword ?? prompt(`"${slug}" is password protected. Enter its password to edit it:`);
+  if (pw === null) return null;
+  try {
+    d.text = await decryptBody(d.locked, pw);
+  } catch {
+    alert("Wrong password.");
+    return null;
+  }
+  d.password = pw;
+  d.locked = undefined;
+  return d;
+}
+
 function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
   document.querySelectorAll<HTMLButtonElement>(".row[data-remote]").forEach((b) => {
     const slug = b.dataset.remote!;
     b.onclick = async () => {
       b.disabled = true;
       try {
-        const d = await fetchPost(s, slug);
-        if (d.locked) {
-          const pw = prompt(`"${slug}" is password protected. Enter its password to edit it:`);
-          if (pw === null) return void (b.disabled = false); // cancelled
-          try {
-            d.text = await decryptBody(d.locked, pw);
-            d.password = pw;
-            d.locked = undefined;
-          } catch {
-            alert("Wrong password.");
-            return void (b.disabled = false);
-          }
-        }
+        const d = await openRemoteDraft(s, slug);
+        if (!d) return void (b.disabled = false); // cancelled or wrong password
         await saveDraft(d);
         location.hash = `#/d/${d.id}`;
       } catch (e) {
@@ -396,6 +517,36 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
     };
     b.onpointerup = b.onpointerleave = b.onpointercancel = () => clearTimeout(held);
   });
+}
+
+/** GitHub device flow, shown in `info`: code + "open GitHub" + Cancel. Saves the token set, then calls `onDone`. */
+async function startSignIn(btn: HTMLButtonElement, info: HTMLElement, onDone: () => void) {
+  const abort = new AbortController();
+  btn.setAttribute("disabled", "");
+  try {
+    info.textContent = "Contacting GitHub…";
+    const code = await requestDeviceCode(AUTH);
+    info.innerHTML = `Enter code <b id="userCode">${esc(code.user_code)}</b> at GitHub, then approve.
+      <button id="openGh">Copy code &amp; open GitHub</button> <button id="cancelGh">Cancel</button>`;
+    document.getElementById("openGh")!.onclick = () => {
+      void navigator.clipboard?.writeText(code.user_code).catch(() => {});
+      window.open(code.verification_uri, "_blank");
+    };
+    document.getElementById("cancelGh")!.onclick = () => abort.abort();
+    const set = await pollForToken(AUTH, code, { signal: abort.signal });
+    const now = Date.now();
+    saveSettings({
+      ...loadSettings(),
+      token: set.access_token,
+      refreshToken: set.refresh_token,
+      expiresAt: set.expires_in ? now + set.expires_in * 1000 : undefined,
+      tokenSavedAt: now,
+    });
+    onDone();
+  } catch (e) {
+    info.textContent = (e as Error).message;
+    btn.removeAttribute("disabled");
+  }
 }
 
 function tokenInfo(s: { token: string; tokenSavedAt?: number; refreshToken?: string }) {
@@ -426,36 +577,11 @@ function settingsView() {
   document.getElementById("back")!.onclick = () => history.back();
   const signin = document.getElementById("signin");
   if (signin)
-    signin.onclick = async () => {
-      const info = document.getElementById("signinInfo")!;
-      const abort = new AbortController();
-      signin.setAttribute("disabled", "");
-      try {
-        info.textContent = "Contacting GitHub…";
-        const code = await requestDeviceCode(AUTH);
-        info.innerHTML = `Enter code <b id="userCode">${esc(code.user_code)}</b> at GitHub, then approve.
-          <button id="openGh">Copy code &amp; open GitHub</button> <button id="cancelGh">Cancel</button>`;
-        document.getElementById("openGh")!.onclick = () => {
-          void navigator.clipboard?.writeText(code.user_code).catch(() => {});
-          window.open(code.verification_uri, "_blank");
-        };
-        document.getElementById("cancelGh")!.onclick = () => abort.abort();
-        const set = await pollForToken(AUTH, code, { signal: abort.signal });
-        const now = Date.now();
-        saveSettings({
-          ...loadSettings(),
-          token: set.access_token,
-          refreshToken: set.refresh_token,
-          expiresAt: set.expires_in ? now + set.expires_in * 1000 : undefined,
-          tokenSavedAt: now,
-        });
+    signin.onclick = () =>
+      startSignIn(signin as HTMLButtonElement, document.getElementById("signinInfo")!, () => {
         location.hash = "#/";
         void sync();
-      } catch (e) {
-        info.textContent = (e as Error).message;
-        signin.removeAttribute("disabled");
-      }
-    };
+      });
   document.getElementById("check")!.onclick = async () => {
     const info = document.getElementById("tokenInfo")!;
     const saved = loadSettings();
