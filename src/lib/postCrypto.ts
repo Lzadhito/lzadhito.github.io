@@ -3,9 +3,9 @@
 // The repo (and the built site) is public, so a post can only really be "password
 // protected" if what gets committed is unreadable without the password: the composer
 // encrypts a post's markdown before publishing, and a reader's browser decrypts it after
-// they type the right password. The password itself is never committed or transmitted —
-// there's no backdoor, so a lost password can't be recovered, only replaced by publishing
-// new content.
+// they type the right password. The composer also saves the password in the post's front
+// matter (see toMarkdown in composer/github.ts), so it can be read back on any device; that
+// makes this a lock against site readers, not against anyone who can read the repo.
 //
 // Blob format (what ends up as the post's body in the .md file): "v1.<salt>.<iv>.<ciphertext>",
 // each part base64. PBKDF2-SHA256 derives an AES-GCM-256 key from the password and a random

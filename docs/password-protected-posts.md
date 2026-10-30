@@ -15,10 +15,11 @@ means something if what's actually committed is unreadable without it. The compo
 3. Commits `protected: true` in the frontmatter and the ciphertext as the body — see
    `src/lib/postCrypto.ts`.
 
-The password itself is never committed, and never leaves the browser it's typed in (the
-composer keeps it in this device's local IndexedDB, alongside the draft, purely so editing
-the same post later on the same device doesn't ask again — see `docs/composer-setup.md` for
-how the GitHub token is handled the same way).
+The password is also saved in the post's front matter (`password: "..."`), on purpose: this is a
+one-author blog, and being able to read the password on any device beats remembering it. The catch:
+anyone who can read the repo can read the password and decrypt the post. The site's prompt still keeps
+out readers of the website and search engines, but not someone browsing the repo on GitHub. The
+composer also keeps it in this device's local IndexedDB next to the draft.
 
 On the site, `src/components/PasswordGate.astro` shows the prompt and
 `src/scripts/passwordGate.ts` does the decrypting: it derives the same key from whatever's
@@ -35,17 +36,17 @@ the post exists are all still public — in `/blog`, the RSS feed, the sitemap, 
 
 ## Threat model
 
-This protects against a casual reader, a search engine, or someone browsing the repo on
-GitHub — none of them can read the body without the password. It does **not** protect against
-someone who downloads the ciphertext and brute-forces the password offline; there's no rate
-limiting possible on a static site. Use a real password, not a word.
+This protects against a casual reader of the site or a search engine. It does **not** protect against
+anyone who opens the repo: the password is in the front matter next to the ciphertext. If you ever need
+a post to be truly secret, don't use this.
 
 ## Editing a protected post
 
-- **Same device**: opens normally — the password is already saved locally.
-- **A different device/browser**: opening it from the Drafts list asks for the password, to
-  decrypt it back into editable text.
-- **Forgotten password**: the text is unrecoverable by design (no backdoor), but the post is never stuck.
+- **Any device**: opens normally. The password comes from the post's front matter, so there's no prompt.
+  The editor's password field has a **Show** button to read it.
+- **Older posts**: ones published before the password was saved don't have it in the repo. Update them once
+  from a device that knows the password and it is saved from then on.
+- **Forgotten password** (only for older posts that never saved one): the text can't be recovered, but the post is never stuck.
   Tap the locked post (🔒) in Drafts to open the unlock sheet. A wrong password shows an error in the
   sheet and lets you try again. "Forgot the password?" then offers **Write it again**: a fresh draft for the
   same post that keeps its title, date and link, with an empty body. Nothing changes in the repo until you

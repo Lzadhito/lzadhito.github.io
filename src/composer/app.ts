@@ -231,7 +231,8 @@ function editor() {
         <button class="item" id="new">New draft</button>
         <button class="item" id="setpw">Set password</button>
         <div id="pwRow" ${d?.password ? "" : "hidden"}>
-          <input class="password" id="password" type="password" autocomplete="off" placeholder="Password — locks this post" value="${esc(d?.password ?? "")}" />
+          <div class="pwline"><input class="password" id="password" type="password" autocomplete="off" placeholder="Password — locks this post" value="${esc(d?.password ?? "")}" />
+            <button type="button" id="showpw">Show</button></div>
         </div>
         ${published ? `<div class="danger-zone"><button class="item danger" id="unpub">Unpublish</button></div>` : ""}
         ${d && !published ? `<div class="danger-zone"><button class="item danger" id="delete">Delete</button></div>` : ""}
@@ -290,6 +291,11 @@ function editor() {
   document.getElementById("setpw")!.onclick = () => {
     document.getElementById("pwRow")!.hidden = false;
     password.focus();
+  };
+  document.getElementById("showpw")!.onclick = (e) => {
+    const show = password.type === "password";
+    password.type = show ? "text" : "password";
+    (e.currentTarget as HTMLButtonElement).textContent = show ? "Hide" : "Show";
   };
   document.getElementById("new")!.onclick = () => {
     flush();
@@ -487,13 +493,20 @@ function wireDraftRows(local: Draft[]) {
 async function openRemoteDraft(s: ReturnType<typeof loadSettings>, slug: string, knownPassword?: string): Promise<Draft | null> {
   const d = await fetchPost(s, slug);
   if (!d.locked) return d;
-  if (knownPassword) {
-    try {
-      return { ...d, text: await decryptBody(d.locked, knownPassword), password: knownPassword, locked: undefined };
-    } catch {} // the password changed elsewhere: fall through and ask
-  }
+  const opened = await unlockWith(d, knownPassword || d.password); // the repo copy carries its own saved password
+  if (opened) return opened;
   const r = await unlockSheet(s, d, false);
   return r === "deleted" ? null : r;
+}
+
+/** Decrypts a fetched locked post with `pw`. Null when there's no password or it's wrong. */
+async function unlockWith(d: Draft, pw?: string): Promise<Draft | null> {
+  if (!pw) return null;
+  try {
+    return { ...d, text: await decryptBody(d.locked!, pw), password: pw, locked: undefined };
+  } catch {
+    return null;
+  }
 }
 
 /** Bottom sheet for a locked post: password with inline errors, and (from the list) the ways out when it's forgotten.
@@ -545,8 +558,9 @@ function unlockSheet(s: ReturnType<typeof loadSettings>, d: Draft, manage: boole
         e.preventDefault();
         go.disabled = true;
         try {
-          const text = await decryptBody(d.locked!, pw.value);
-          settle({ ...d, text, password: pw.value, locked: undefined });
+          const opened = await unlockWith(d, pw.value);
+          if (!opened) throw new Error("wrong password");
+          settle(opened);
         } catch {
           err.hidden = false;
           go.disabled = false;
@@ -590,7 +604,7 @@ function wireRemoteRows(s: ReturnType<typeof loadSettings>) {
       b.disabled = true;
       try {
         const fetched = await fetchPost(s, slug);
-        const d = fetched.locked ? await unlockSheet(s, fetched, true) : fetched;
+        const d = !fetched.locked ? fetched : (await unlockWith(fetched, fetched.password)) ?? (await unlockSheet(s, fetched, true));
         if (d === "deleted") return void drafts();
         if (!d) return void (b.disabled = false); // dismissed
         await saveDraft(d);

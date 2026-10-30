@@ -352,6 +352,23 @@ describe("fetchPost", () => {
   });
 });
 
+describe("saved password", () => {
+  it("writes the password to the front matter and reads it back with the locked post", async () => {
+    const md = await toMarkdown(draft({ title: "S", text: "secret body", password: "hunter2", pubDate: "2026-01-01" }));
+    expect(md).toMatch(/protected: true\npassword: "hunter2"\n/);
+    expect(md).not.toContain("secret body");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { repository: { object: { text: md, oid: "o" } } } })));
+    const d = await fetchPost(settings, "s");
+    expect(d).toMatchObject({ password: "hunter2", text: "" });
+    expect(d.locked).toBeTruthy();
+    expect(d.extra).not.toHaveProperty("password");
+  });
+
+  it("writes no password line for an unprotected post", async () => {
+    expect(await toMarkdown(draft({ text: "hi", pubDate: "2026-01-01" }))).not.toContain("password");
+  });
+});
+
 describe("replacementDraft", () => {
   it("keeps the post's identity, drops the ciphertext and password, and marks itself as a replacement", () => {
     const locked: Draft = {

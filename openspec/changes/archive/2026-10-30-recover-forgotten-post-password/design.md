@@ -9,6 +9,7 @@ See proposal.md for motivation. Facts that shape the approach:
 - `openRemoteDraft` (`app.ts`) is the single place that unlocks. It uses `prompt` and `alert`, and returns `null` on any failure, which is the dead end.
 - A remote post with a local copy shows only as the local row. That local copy already holds the password, so it opens without a prompt. The sheet therefore only matters for remote-only locked posts, so no "look for it on this device" step is needed.
 - The editor already uses a `<dialog>` bottom sheet for its menu.
+- The password used to exist only in local IndexedDB. The sign-in token can only write to the public repo, so it has no private place to keep one; the Cloudflare Worker could store it, but that adds an endpoint, a table and a deploy.
 - The author's security model is the GitHub token: anyone signed in may replace or delete any post. No extra proof is required to start over.
 
 ## Goals / Non-Goals
@@ -19,11 +20,15 @@ See proposal.md for motivation. Facts that shape the approach:
 - Nothing destructive happens until Publish.
 
 **Non-Goals:**
-- Recovering the text or adding a backdoor, recovery key, or password hint (a hint would be public).
+- A private password store (Worker or database), a master key, or a hint field. The password is saved in the repo instead.
 - Changing encryption, the stored blob format, or the reader-side gate.
 - Rewriting git history to remove the old ciphertext.
 
 ## Decisions
+
+**Save the password in the repo front matter.** `toMarkdown` writes `password: "..."` next to `protected: true`; `fetchPost` returns it on the locked draft. Why: it works on every device with no new infrastructure, and the author explicitly accepts that the repo is public. Alternatives: local-only with a Show button (lost with the browser); Worker/D1 store behind the token (new endpoint, table and deploy); a master key (one more thing to remember).
+
+**The open path tries the saved password first.** Opening a locked post decrypts with the repo's password (or the conflict flow's known one) and only shows the sheet when none exists or it fails. Older posts have no saved password, so they keep the sheet and "Forgot" route until they are updated once.
 
 **Unlock sheet replaces `prompt`/`alert`.** A `<dialog>` with a password input, show/hide toggle, inline error, and secondary actions. Why: native dialogs can't show an inline error or a second action, and that is what created the dead end. Alternative: keep native dialogs and add a `confirm` for "forgot" — rejected, it still bounces the author out after each wrong guess.
 
@@ -41,6 +46,8 @@ See proposal.md for motivation. Facts that shape the approach:
 
 - [The author really knew the password and misses it] → "Try again" is the primary action; "Write it again" sits behind "Forgot the password?" and needs a second tap.
 - [Abandoned rewrite draft lingers] → It is a normal local draft, marked "replaces locked post", and has a Discard in the banner.
-- [Old ciphertext stays in git history] → Accepted; documented. Only a guess of the old password could read it.
+- [The saved password is readable by anyone who can read the repo] → Accepted by the author; documented as a lock for site readers only.
+- [Old ciphertext stays in git history] → Accepted; documented.
+- [Posts locked before this change have no saved password] → They update once from a device that knows it, or use "Write it again".
 - [Remote changes while the rewrite is open] → Existing `baseOid` conflict handling applies.
 - [`Draft` gains a field] → IndexedDB is schemaless per record, so no migration. Older records simply lack it.

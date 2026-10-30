@@ -21,4 +21,11 @@
 ## 4. Docs and integration
 
 - [x] 4.1 Update the "Editing a protected post" section of `docs/password-protected-posts.md` to describe the sheet, "Write it again", and that the old ciphertext remains in git history
-- [ ] 4.2 Run the full test suite and walk the flow by hand in `/write` against a protected post: wrong password, Forgot, Write it again, Discard, then again and Publish; verify the live URL shows the new text
+- [ ] 4.2 Run the full test suite and walk the flow by hand in `/write`: publish a post with a password and reopen it with no prompt, Show the password; then an older post with no saved password: wrong password, Forgot, Write it again, Discard, then again and Publish; verify the live URL shows the new text
+
+## 5. Saved password (added after the first pass)
+
+- [x] 5.1 Write the password to the front matter in `toMarkdown` and read it back in `fetchPost`; verified by tests in `github.test.ts` that cover a protected and an unprotected post
+- [x] 5.2 Open a locked post with its saved password and fall back to the sheet when it is wrong; verified by two tests in `app.test.ts`
+- [x] 5.3 Add a Show/Hide button to the editor's password field; verified by a test in `app.test.ts`
+- [x] 5.4 Rewrite `docs/password-protected-posts.md` for the saved password and its public-repo trade-off

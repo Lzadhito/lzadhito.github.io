@@ -6,6 +6,35 @@ Defines how the author finds, unlocks, replaces, or deletes a password-protected
 
 ## ADDED Requirements
 
+### Requirement: A protected post's password is saved with it
+Publishing a protected post SHALL save its password in the post's front matter, and reading the post back SHALL return that password. An unprotected post SHALL NOT have a password line.
+
+#### Scenario: Publish a protected post
+- **WHEN** the author publishes a post that has a password
+- **THEN** the committed file's front matter contains the password and the body is still encrypted
+
+#### Scenario: Unprotected post
+- **WHEN** the author publishes a post with no password
+- **THEN** the front matter has no password line
+
+### Requirement: A saved password opens the post without a prompt
+Opening a locked post whose front matter has a correct password SHALL open it in the editor with its text decrypted and no sheet. If the saved password is wrong, the unlock sheet SHALL open.
+
+#### Scenario: Saved password is correct
+- **WHEN** the author opens a locked post that has a saved password
+- **THEN** the editor opens with the decrypted text and no sheet is shown
+
+#### Scenario: Saved password is wrong
+- **WHEN** the saved password fails to decrypt the post
+- **THEN** the unlock sheet opens
+
+### Requirement: The password can be revealed in the editor
+The editor's password field SHALL have a button that shows or hides the password.
+
+#### Scenario: Show the password
+- **WHEN** the author taps Show next to the password field
+- **THEN** the password is visible, and the button reads Hide
+
 ### Requirement: Locked posts are marked in the Drafts list
 A post in the repo that is password protected SHALL show a lock marker in the Drafts list.
 
@@ -36,7 +65,7 @@ The unlock sheet SHALL offer "View on site" and "Delete" without requiring the p
 - **THEN** the post is removed from the repo and from the list
 
 ### Requirement: Forgotten password is explained honestly
-The sheet SHALL offer a "Forgot the password?" step that states the text cannot be recovered by anyone and says what is kept (title, date, link) and what is replaced (the locked text). It SHALL offer "Write it again" and a way back to trying the password.
+When a post has no usable saved password, the sheet SHALL offer a "Forgot the password?" step that states the text cannot be recovered by anyone and says what is kept (title, date, link) and what is replaced (the locked text). It SHALL offer "Write it again" and a way back to trying the password.
 
 #### Scenario: Open the forgot step
 - **WHEN** the author chooses "Forgot the password?"

@@ -48,15 +48,17 @@ export function effectiveTitle(d: Draft): string {
 }
 
 /** Builds the committed .md file. When `d.password` is set, the body is encrypted and the
- * plaintext never appears in the output — see src/lib/postCrypto.ts. */
+ * plaintext never appears in the output — see src/lib/postCrypto.ts. The password itself is written to the
+ * front matter on purpose: this is a one-author blog, and being able to read it back on any device beats
+ * remembering it. Anyone who can read the repo can therefore read the post. */
 export async function toMarkdown(d: Draft): Promise<string> {
   const fm = [`title: ${JSON.stringify(effectiveTitle(d))}`];
   if (d.extra?.description !== undefined) fm.push(`description: ${JSON.stringify(d.extra.description)}`);
   fm.push(`pubDate: ${JSON.stringify(d.pubDate)}`);
   if (d.published) fm.push(`updatedDate: ${JSON.stringify(new Date().toISOString())}`);
-  if (d.password) fm.push(`protected: true`);
+  if (d.password) fm.push(`protected: true`, `password: ${JSON.stringify(d.password)}`);
   for (const [k, v] of Object.entries(d.extra ?? {})) {
-    if (k === "description" || k === "protected") continue; // description already emitted, right after title
+    if (k === "description" || k === "protected" || k === "password") continue; // description already emitted, right after title
     fm.push(`${k}: ${JSON.stringify(v)}`);
   }
   const body = d.password ? await encryptBody(d.text.trim(), d.password) : d.text.trim();
@@ -294,13 +296,16 @@ export async function fetchPost(s: Settings, slug: string): Promise<Draft> {
   if (raw === undefined) throw new Error(`"${slug}" wasn't found in the repo.`);
   const { title, pubDate, extra, text } = parseFrontmatter(raw);
   const isProtected = extra.protected === "true";
+  const password = isProtected ? extra.password : undefined; // saved by toMarkdown; absent on older posts
   delete extra.protected;
+  delete extra.password;
   const now = Date.now();
   return {
     id: newId(),
     title,
     text: isProtected ? "" : text,
     locked: isProtected ? text : undefined,
+    password,
     created: now,
     updated: now,
     slug,

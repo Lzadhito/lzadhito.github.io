@@ -783,6 +783,41 @@ describe("locked posts", () => {
     expect($('.row[data-remote="a"]').textContent).not.toMatch(/🔒/);
   });
 
+  it("opens a locked post with its saved password and no prompt", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("2026-01-01-secret", { title: "Secret", protected: true })]);
+    fetchPostMock.mockResolvedValue({ ...(await lockedPost("right")), password: "right" });
+    await boot("#/drafts");
+    await tick(20);
+    $<HTMLButtonElement>('.row[data-remote="2026-01-01-secret"]').click();
+    await tick(600);
+    expect(document.getElementById("unlock")).toBeNull();
+    expect($<HTMLTextAreaElement>("#body").value).toBe("the real text");
+  });
+
+  it("falls back to the sheet when the saved password is wrong", async () => {
+    signedIn();
+    listRemotePostsMock.mockResolvedValue([rp("2026-01-01-secret", { title: "Secret", protected: true })]);
+    fetchPostMock.mockResolvedValue({ ...(await lockedPost("right")), password: "stale" });
+    await boot("#/drafts");
+    await tick(20);
+    $<HTMLButtonElement>('.row[data-remote="2026-01-01-secret"]').click();
+    await tick(600);
+    expect(document.getElementById("unlockPw")).not.toBeNull();
+  });
+
+  it("shows and hides the password in the editor", async () => {
+    const db = await boot();
+    await db.saveDraft({ id: "pw", title: "T", text: "x", created: 1, updated: 1, password: "hunter2" });
+    await boot("#/d/pw");
+    expect($<HTMLInputElement>("#password").type).toBe("password");
+    $<HTMLButtonElement>("#showpw").click();
+    expect($<HTMLInputElement>("#password").type).toBe("text");
+    expect($<HTMLInputElement>("#password").value).toBe("hunter2");
+    $<HTMLButtonElement>("#showpw").click();
+    expect($<HTMLInputElement>("#password").type).toBe("password");
+  });
+
   it("keeps the sheet open with an inline error on a wrong password, then opens the post on the right one", async () => {
     await openLockedFromList();
     await submitPassword("wrong");
