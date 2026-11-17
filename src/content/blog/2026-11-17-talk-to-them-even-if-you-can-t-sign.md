@@ -1,6 +1,7 @@
 ---
 title: "Talk to Them, Even If You Can’t Sign"
 pubDate: "2026-11-17T10:33:29.881Z"
+updatedDate: "2026-11-17T12:03:27.662Z"
 ---
 
 I befriended a deaf couple, and numbers of deaf people this month. It was a whole new world that I my foot every stepepd, made me realize such a grateful life I ever had in my life. Even compared to the trauma, the problems, the time when I felt I was the most tormented (admit it, everyone been there 😂), the life they lived with the struggles, what they've been through not even close to mine.
